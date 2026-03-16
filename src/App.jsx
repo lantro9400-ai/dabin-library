@@ -309,6 +309,7 @@ export default function App() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isBookModalOpen, setIsBookModalOpen] = useState(false);
   const [isAsmrOpen, setIsAsmrOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -706,6 +707,8 @@ export default function App() {
               <button onClick={() => setIsAsmrOpen(p=>!p)} className={`p-2.5 rounded-2xl transition-all ${asmr.activeSound ? 'bg-emerald-500 text-white' : (isDark ? 'text-gray-400 bg-gray-700 hover:bg-gray-600' : 'text-gray-500 bg-gray-100 hover:bg-gray-200')}`} title="집중 사운드 ASMR">
                 <Headphones className="w-5 h-5" />
               </button>
+              {/* 사용법 */}
+              <button onClick={() => setIsHelpOpen(true)} className={`p-2.5 rounded-2xl font-black text-sm transition-all ${isDark ? 'text-gray-400 bg-gray-700 hover:bg-gray-600' : 'text-gray-500 bg-gray-100 hover:bg-gray-200'}`}>?</button>
               {/* 다크모드 */}
               <button onClick={() => setIsDark(p=>!p)} className={`p-2.5 rounded-2xl transition-all ${isDark ? 'text-yellow-400 bg-gray-700' : 'text-gray-400 bg-gray-100 hover:bg-gray-200'}`}>
                 {isDark ? <Moon className="w-5 h-5 fill-current"/> : <Sun className="w-5 h-5 fill-current"/>}
@@ -762,6 +765,38 @@ export default function App() {
           {viewMode === 'library' ? renderLibrary() : renderAcorn()}
         </div>
       </div>
+
+      {/* ── 사용법 모달 ──────────────────────────────────────────── */}
+      {isHelpOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsHelpOpen(false)}>
+          <div className={`rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border-4 border-white/50 ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white'}`} onClick={e => e.stopPropagation()}>
+            <div className={`p-6 border-b flex justify-between items-center ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-orange-50 border-orange-100'}`}>
+              <h3 className={`text-xl font-black flex items-center gap-2 ${tTextMain}`}>
+                <img src="/rabbit.png" alt="" className="w-8 h-8 object-contain" /> 사용법 안내
+              </h3>
+              <button onClick={() => setIsHelpOpen(false)} className={`p-2 rounded-full shadow-sm ${isDark ? 'bg-gray-700 text-gray-400' : 'bg-white text-gray-400'} hover:text-rose-500`}><X className="w-5 h-5"/></button>
+            </div>
+            <div className={`p-6 space-y-5 overflow-y-auto max-h-[70vh] ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
+              {[
+                { emoji: '📚', title: '책 추가하기', desc: '내 서재 탭에서 [새로운 책 추가하기]를 눌러 제목이나 저자로 검색하세요. 원하는 책을 찾으면 [서재에 추가]를 탭하면 됩니다.' },
+                { emoji: '📖', title: '독서 진도 기록', desc: '서재에서 책 카드를 탭하면 지금까지 읽은 페이지를 입력할 수 있어요. 슬라이더로 조절하거나 숫자를 직접 입력하세요. 마지막 페이지까지 읽으면 자동으로 완독 처리됩니다!' },
+                { emoji: '🥕', title: '당근 창고 (독서 기록)', desc: '창고 기록 탭에서 최근 35일간의 독서 기록을 한눈에 볼 수 있어요. 많이 읽을수록 칸이 진해져요. 매일 읽으면 연속 독서 뱃지가 쌓입니다!' },
+                { emoji: '⏱️', title: '집중 타이머', desc: '상단 타이머 버튼을 누르면 30분 집중 독서 타이머가 시작돼요. 타이머가 끝나면 알림이 울려요. 다시 누르면 일시정지할 수 있어요.' },
+                { emoji: '🎵', title: 'ASMR 집중 사운드', desc: '헤드폰 버튼을 눌러 집중에 도움되는 소리를 틀어보세요. 빗소리, 장작불, 파도, 숲속, 산바람 중 선택할 수 있고 볼륨도 조절 가능해요.' },
+                { emoji: '🌙', title: '다크모드', desc: '달/해 버튼으로 다크모드와 라이트모드를 전환할 수 있어요. 밤에 독서할 때 눈이 편해요.' },
+              ].map(({ emoji, title, desc }) => (
+                <div key={title} className={`flex gap-4 p-4 rounded-2xl ${isDark ? 'bg-gray-700' : 'bg-orange-50'}`}>
+                  <span className="text-2xl flex-shrink-0 mt-0.5">{emoji}</span>
+                  <div>
+                    <p className={`font-black text-sm mb-1 ${tTextMain}`}>{title}</p>
+                    <p className={`text-xs leading-relaxed ${tTextSub}`}>{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 책 검색 모달 ─────────────────────────────────────────── */}
       {isSearchOpen && (
