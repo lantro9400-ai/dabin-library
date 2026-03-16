@@ -653,7 +653,7 @@ export default function App() {
           </div>
         </div>
         <div className="p-6 rounded-[2rem] bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg relative overflow-hidden">
-          <div className="absolute -right-4 -bottom-4 opacity-20"><CuteSquirrel mood="bolppang" className="w-32 h-32"/></div>
+          <div className="absolute -right-4 -bottom-4 opacity-20"><img src="/rabbit.png" alt="" className="w-32 h-32 object-contain"/></div>
           <h3 className="text-xl font-black mb-6 relative z-10">토끼의 성적표 📜</h3>
           <div className="grid grid-cols-2 gap-4 relative z-10">
             <div className="bg-white/20 rounded-2xl p-4 border border-white/30">
@@ -687,7 +687,7 @@ export default function App() {
           {/* 헤더 */}
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-3">
-              <CuteSquirrel mood={isBolppang ? 'bolppang' : (books.length === 0 ? 'sleeping' : 'happy')} className="w-12 h-12" />
+              <img src="/rabbit.png" alt="다빈토끼" className="w-12 h-12 object-contain" />
               <div>
                 <h1 className="text-[20px] font-black tracking-tight text-orange-600">다빈토끼의 도서관</h1>
                 <div className="flex gap-1 mt-0.5">
