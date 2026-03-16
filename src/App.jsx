@@ -191,6 +191,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const dataLoadedRef = useRef(false);
+  const loginInProgressRef = useRef(false);
 
   const [books, setBooks] = useState([]);
   const [records, setRecords] = useState({});
@@ -234,9 +235,12 @@ export default function App() {
     setAuthLoading(false);
   }, []);
 
-  // 페이지 로드 시 기존 세션 복원 (로그인 직후엔 dataLoadedRef로 중복 방지)
+  // 페이지 로드 시 기존 세션 복원
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      // 로그인 팝업 진행 중 null 이벤트 무시
+      if (!firebaseUser && loginInProgressRef.current) return;
+
       if (firebaseUser && !dataLoadedRef.current) {
         await loadUserData(firebaseUser);
       } else if (!firebaseUser && !dataLoadedRef.current) {
@@ -269,13 +273,17 @@ export default function App() {
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     try {
       if (isMobile) {
+        loginInProgressRef.current = true;
         await signInWithRedirect(auth, googleProvider);
       } else {
+        loginInProgressRef.current = true;
         setAuthLoading(true);
         const result = await signInWithPopup(auth, googleProvider);
+        loginInProgressRef.current = false;
         await loadUserData(result.user);
       }
     } catch (e) {
+      loginInProgressRef.current = false;
       setAuthLoading(false);
       console.error('Login error:', e.code, e.message);
       if (e.code === 'auth/unauthorized-domain') {
