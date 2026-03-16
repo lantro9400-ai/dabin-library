@@ -219,33 +219,39 @@ export default function App() {
   const asmr = useAsmr();
 
   // ── Firebase Auth ────────────────────────────────────────────────
-  useEffect(() => {
-    // 모바일 리다이렉트 로그인 결과 처리
-    getRedirectResult(auth).catch(console.error);
-
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        try {
-          const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (snap.exists()) {
-            const data = snap.data();
-            setBooks(data.books || []);
-            setRecords(data.records || {});
-            setIsDark(data.settings?.isDark ?? false);
-          }
-        } catch (e) { console.error(e); }
-        dataLoadedRef.current = true;
-      } else {
-        setUser(null);
-        setBooks([]);
-        setRecords({});
-        dataLoadedRef.current = false;
+  const loadUserData = useCallback(async (firebaseUser) => {
+    setUser(firebaseUser);
+    try {
+      const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+      if (snap.exists()) {
+        const data = snap.data();
+        setBooks(data.books || []);
+        setRecords(data.records || {});
+        setIsDark(data.settings?.isDark ?? false);
       }
-      setAuthLoading(false);
-    });
-    return unsubscribe;
+    } catch (e) { console.error('Firestore load error:', e); }
+    dataLoadedRef.current = true;
+    setAuthLoading(false);
   }, []);
+
+  // 페이지 로드 시 기존 세션 복원 (로그인 직후엔 dataLoadedRef로 중복 방지)
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser && !dataLoadedRef.current) {
+        await loadUserData(firebaseUser);
+      } else if (!firebaseUser && !dataLoadedRef.current) {
+        setUser(null);
+        setAuthLoading(false);
+      }
+    });
+
+    // 모바일 리다이렉트 결과 처리
+    getRedirectResult(auth).then(result => {
+      if (result?.user) loadUserData(result.user);
+    }).catch(console.error);
+
+    return unsubscribe;
+  }, [loadUserData]);
 
   const saveDoc = useCallback((updates) => {
     if (!dataLoadedRef.current || !user) return;
@@ -260,27 +266,32 @@ export default function App() {
   }, [isDark]);
 
   const handleGoogleLogin = async () => {
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     try {
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       if (isMobile) {
         await signInWithRedirect(auth, googleProvider);
       } else {
-        await signInWithPopup(auth, googleProvider);
+        setAuthLoading(true);
+        const result = await signInWithPopup(auth, googleProvider);
+        await loadUserData(result.user);
       }
     } catch (e) {
+      setAuthLoading(false);
       console.error('Login error:', e.code, e.message);
       if (e.code === 'auth/unauthorized-domain') {
-        alert('Firebase 승인 도메인 설정이 필요해요.\nAuthentication → Settings → 승인된 도메인에\ndabin-library.vercel.app 을 추가해주세요.');
-      } else {
+        alert('Firebase 승인 도메인 설정 필요\nAuthentication → Settings → 승인된 도메인에\ndabin-library.vercel.app 추가');
+      } else if (e.code !== 'auth/popup-closed-by-user') {
         alert('로그인 오류: ' + e.code);
       }
     }
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
-    setBooks([]); setRecords({});
     dataLoadedRef.current = false;
+    await signOut(auth);
+    setUser(null);
+    setBooks([]);
+    setRecords({});
   };
 
   // ── 타이머 ───────────────────────────────────────────────────────
