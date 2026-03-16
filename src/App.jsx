@@ -5,7 +5,7 @@ import {
   Library, Flame, History, BookMarked, Headphones, Volume2, VolumeX, LogOut
 } from 'lucide-react';
 import { auth, db, googleProvider } from './firebase';
-import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 // ─────────────────────────────────────────────────────────────────
@@ -192,6 +192,11 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const dataLoadedRef = useRef(false);
   const loginInProgressRef = useRef(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [nameInput, setNameInput] = useState('');
+  const [authError, setAuthError] = useState('');
 
   const [books, setBooks] = useState([]);
   const [records, setRecords] = useState({});
@@ -300,6 +305,37 @@ export default function App() {
     setUser(null);
     setBooks([]);
     setRecords({});
+  };
+
+  const handleEmailAuth = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    loginInProgressRef.current = true;
+    setAuthLoading(true);
+    try {
+      if (authMode === 'signup') {
+        const result = await createUserWithEmailAndPassword(auth, emailInput, passwordInput);
+        if (nameInput.trim()) await updateProfile(result.user, { displayName: nameInput.trim() });
+        await loadUserData({ ...result.user, displayName: nameInput.trim() || result.user.displayName });
+      } else {
+        const result = await signInWithEmailAndPassword(auth, emailInput, passwordInput);
+        loginInProgressRef.current = false;
+        await loadUserData(result.user);
+      }
+    } catch (e) {
+      loginInProgressRef.current = false;
+      setAuthLoading(false);
+      const msgs = {
+        'auth/email-already-in-use': '이미 사용 중인 이메일이에요.',
+        'auth/invalid-email': '이메일 형식이 올바르지 않아요.',
+        'auth/weak-password': '비밀번호는 6자 이상이어야 해요.',
+        'auth/user-not-found': '등록되지 않은 이메일이에요.',
+        'auth/wrong-password': '비밀번호가 틀렸어요.',
+        'auth/invalid-credential': '이메일 또는 비밀번호가 틀렸어요.',
+        'auth/too-many-requests': '잠시 후 다시 시도해주세요.',
+      };
+      setAuthError(msgs[e.code] || '오류: ' + e.code);
+    }
   };
 
   // ── 타이머 ───────────────────────────────────────────────────────
@@ -511,16 +547,59 @@ export default function App() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FFFBEB] p-4">
-        <div className="bg-white rounded-[2.5rem] shadow-2xl p-10 flex flex-col items-center gap-6 w-full max-w-sm border-4 border-white/60">
-          <img src="/rabbit.png" alt="다빈토끼" className="w-28 h-28 object-contain" />
+        <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 flex flex-col items-center gap-5 w-full max-w-sm border-4 border-white/60">
+          <img src="/rabbit.png" alt="다빈토끼" className="w-24 h-24 object-contain" />
           <div className="text-center">
             <h1 className="text-2xl font-black text-orange-600">다빈토끼의 도서관</h1>
-            <p className="text-sm text-gray-500 mt-2">나만의 독서 기록을 시작해보세요! 🥕</p>
+            <p className="text-sm text-gray-500 mt-1">나만의 독서 기록을 시작해보세요! 🥕</p>
           </div>
-          <button
-            onClick={handleGoogleLogin}
-            className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-white border-2 border-gray-200 rounded-2xl font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95"
-          >
+
+          {/* 탭 */}
+          <div className="flex w-full bg-amber-50 rounded-2xl p-1">
+            {['login','signup'].map(mode => (
+              <button key={mode} onClick={() => { setAuthMode(mode); setAuthError(''); }}
+                className={`flex-1 py-2 text-sm font-extrabold rounded-xl transition-all ${authMode === mode ? 'bg-white text-orange-600 shadow' : 'text-amber-700/50'}`}>
+                {mode === 'login' ? '로그인' : '회원가입'}
+              </button>
+            ))}
+          </div>
+
+          {/* 이메일 폼 */}
+          <form onSubmit={handleEmailAuth} className="w-full space-y-3">
+            {authMode === 'signup' && (
+              <input
+                type="text" placeholder="이름 (선택)" value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                className="w-full px-4 py-3 rounded-2xl border-2 border-amber-200 text-sm font-medium outline-none focus:border-orange-400"
+              />
+            )}
+            <input
+              type="email" placeholder="이메일" value={emailInput} required
+              onChange={e => setEmailInput(e.target.value)}
+              className="w-full px-4 py-3 rounded-2xl border-2 border-amber-200 text-sm font-medium outline-none focus:border-orange-400"
+            />
+            <input
+              type="password" placeholder="비밀번호 (6자 이상)" value={passwordInput} required
+              onChange={e => setPasswordInput(e.target.value)}
+              className="w-full px-4 py-3 rounded-2xl border-2 border-amber-200 text-sm font-medium outline-none focus:border-orange-400"
+            />
+            {authError && <p className="text-red-500 text-xs font-bold text-center">{authError}</p>}
+            <button type="submit"
+              className="w-full py-3.5 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-black text-sm transition-all active:scale-95 shadow-md">
+              {authMode === 'login' ? '로그인' : '가입하기'}
+            </button>
+          </form>
+
+          {/* 구분선 */}
+          <div className="flex items-center gap-3 w-full">
+            <div className="flex-1 h-px bg-gray-200"/>
+            <span className="text-xs text-gray-400 font-bold">또는</span>
+            <div className="flex-1 h-px bg-gray-200"/>
+          </div>
+
+          {/* Google 로그인 */}
+          <button onClick={handleGoogleLogin}
+            className="w-full flex items-center justify-center gap-3 py-3.5 px-6 bg-white border-2 border-gray-200 rounded-2xl font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95 text-sm">
             <GoogleIcon /> Google로 로그인
           </button>
         </div>
