@@ -2,12 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BookOpen, Search, Plus, Award, Moon, Sun,
   X, Timer, Pause, CheckCircle2,
-  Library, Flame, History, BookMarked, Headphones, Volume2, VolumeX
+  Library, Flame, History, BookMarked, Headphones, Volume2, VolumeX, LogOut
 } from 'lucide-react';
+import { auth, db, googleProvider } from './firebase';
+import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 // ─────────────────────────────────────────────────────────────────
 // ASMR 사운드 엔진
-// src 있으면 MP3 파일 사용, 없으면 Web Audio API 프로시저럴 생성
 // ─────────────────────────────────────────────────────────────────
 const ASMR_SOUNDS = [
   { id: 'rain',    label: '빗소리',   emoji: '🌧️', src: '/rain.mp3' },
@@ -17,7 +19,6 @@ const ASMR_SOUNDS = [
   { id: 'wind',    label: '산바람',   emoji: '🏔️' },
 ];
 
-// 노이즈 버퍼 생성기
 function makeNoiseBuffer(ctx, type = 'pink', seconds = 4) {
   const len = ctx.sampleRate * seconds;
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -46,91 +47,40 @@ function makeNoiseBuffer(ctx, type = 'pink', seconds = 4) {
 function buildSound(ctx, master, soundId) {
   const nodes = [];
   const cleanup = () => nodes.forEach(n => { try { n.stop?.(); n.disconnect?.(); } catch{} });
-
   const src = ctx.createBufferSource();
   src.loop = true;
   nodes.push(src);
-
   const gainNode = ctx.createGain();
   gainNode.gain.value = 1;
   nodes.push(gainNode);
 
-  if (soundId === 'rain') {
-    src.buffer = makeNoiseBuffer(ctx, 'pink', 5);
-    const f = ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=1400; f.Q.value=0.5;
-    src.connect(f); f.connect(gainNode); gainNode.connect(master);
-    nodes.push(f);
-
-  } else if (soundId === 'ocean') {
+  if (soundId === 'ocean') {
     src.buffer = makeNoiseBuffer(ctx, 'brown', 5);
     const f = ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=500; f.Q.value=0.8;
-    // LFO for wave rhythm
     const lfo = ctx.createOscillator(); lfo.frequency.value = 0.08;
     const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.35;
     gainNode.gain.value = 0.65;
-    lfo.connect(lfoGain); lfoGain.connect(gainNode.gain);
-    lfo.start();
+    lfo.connect(lfoGain); lfoGain.connect(gainNode.gain); lfo.start();
     src.connect(f); f.connect(gainNode); gainNode.connect(master);
     nodes.push(f, lfo, lfoGain);
-
   } else if (soundId === 'forest') {
-    // 바람 + 살랑이는 나뭇잎
     src.buffer = makeNoiseBuffer(ctx, 'pink', 5);
     const f1 = ctx.createBiquadFilter(); f1.type='bandpass'; f1.frequency.value=600; f1.Q.value=0.3;
     const f2 = ctx.createBiquadFilter(); f2.type='lowpass'; f2.frequency.value=1800;
-    // 느린 LFO로 바람 세기 변화
     const lfo = ctx.createOscillator(); lfo.frequency.value = 0.05;
     const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.2;
     gainNode.gain.value = 0.7;
-    lfo.connect(lfoGain); lfoGain.connect(gainNode.gain);
-    lfo.start();
+    lfo.connect(lfoGain); lfoGain.connect(gainNode.gain); lfo.start();
     src.connect(f1); f1.connect(f2); f2.connect(gainNode); gainNode.connect(master);
     nodes.push(f1, f2, lfo, lfoGain);
-
-  } else if (soundId === 'fire') {
-    // 베이스 불꽃 소리
-    src.buffer = makeNoiseBuffer(ctx, 'brown', 5);
-    const f = ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=900; f.Q.value=1.2;
-    gainNode.gain.value = 0.75;
-    src.connect(f); f.connect(gainNode); gainNode.connect(master);
-    nodes.push(f);
-
-    // 장작 튀기는 소리 (랜덤 크래클)
-    const crackGain = ctx.createGain(); crackGain.gain.value = 0; crackGain.connect(master);
-    const crackSrc = ctx.createBufferSource();
-    crackSrc.buffer = makeNoiseBuffer(ctx, 'white', 2);
-    crackSrc.loop = true;
-    const crackFilter = ctx.createBiquadFilter(); crackFilter.type='highpass'; crackFilter.frequency.value=2000;
-    crackSrc.connect(crackFilter); crackFilter.connect(crackGain); crackSrc.start();
-    nodes.push(crackSrc, crackGain, crackFilter);
-
-    const scheduleCrackle = () => {
-      if (!crackGain.context || crackGain.context.state === 'closed') return;
-      const now = ctx.currentTime;
-      const numPops = Math.floor(Math.random() * 4) + 1;
-      for (let i = 0; i < numPops; i++) {
-        const t = now + Math.random() * 1.5;
-        crackGain.gain.setValueAtTime(0.0, t);
-        crackGain.gain.linearRampToValueAtTime(0.6 + Math.random()*0.4, t + 0.005);
-        crackGain.gain.linearRampToValueAtTime(0.0, t + 0.02 + Math.random()*0.03);
-      }
-      const nextIn = 400 + Math.random() * 1200;
-      return setTimeout(scheduleCrackle, nextIn);
-    };
-    const crackTimer = scheduleCrackle();
-    const origCleanup = cleanup;
-    nodes.push({ disconnect: () => clearTimeout(crackTimer), stop: () => {} });
-
   } else if (soundId === 'wind') {
     src.buffer = makeNoiseBuffer(ctx, 'white', 5);
     const f1 = ctx.createBiquadFilter(); f1.type='bandpass'; f1.frequency.value=400; f1.Q.value=0.1;
     const f2 = ctx.createBiquadFilter(); f2.type='peaking'; f2.frequency.value=200; f2.gain.value=8;
-    // 강한 LFO로 바람 휘몰아치는 느낌
     const lfo = ctx.createOscillator(); lfo.frequency.value = 0.12; lfo.type='sine';
     const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.5;
     gainNode.gain.value = 0.5;
-    lfo.connect(lfoGain); lfoGain.connect(gainNode.gain);
-    lfo.start();
+    lfo.connect(lfoGain); lfoGain.connect(gainNode.gain); lfo.start();
     src.connect(f1); f1.connect(f2); f2.connect(gainNode); gainNode.connect(master);
     nodes.push(f1, f2, lfo, lfoGain);
   }
@@ -142,20 +92,14 @@ function buildSound(ctx, master, soundId) {
 function useAsmr() {
   const ctxRef = useRef(null);
   const masterGainRef = useRef(null);
-  const cleanupRef = useRef(null);   // Web Audio API 정리 함수
-  const audioElRef = useRef(null);   // HTML5 Audio 엘리먼트 (MP3용)
+  const cleanupRef = useRef(null);
+  const audioElRef = useRef(null);
   const [activeSound, setActiveSound] = useState(null);
   const [volume, setVolume] = useState(0.6);
 
   const stopAll = () => {
-    // Web Audio API 정리
     if (cleanupRef.current) { cleanupRef.current(); cleanupRef.current = null; }
-    // HTML5 Audio 정리
-    if (audioElRef.current) {
-      audioElRef.current.pause();
-      audioElRef.current.src = '';
-      audioElRef.current = null;
-    }
+    if (audioElRef.current) { audioElRef.current.pause(); audioElRef.current.src = ''; audioElRef.current = null; }
   };
 
   const getCtx = () => {
@@ -171,120 +115,33 @@ function useAsmr() {
   const play = useCallback((soundId) => {
     stopAll();
     if (activeSound === soundId) { setActiveSound(null); return; }
-
     const sound = ASMR_SOUNDS.find(s => s.id === soundId);
-
     if (sound?.src) {
-      // MP3 파일 재생 (HTML5 Audio)
       const audio = new Audio(sound.src);
-      audio.loop = true;
-      audio.volume = volume;
+      audio.loop = true; audio.volume = volume;
       audio.play().catch(console.error);
       audioElRef.current = audio;
     } else {
-      // Web Audio API 프로시저럴 사운드
       const ctx = getCtx();
       if (ctx.state === 'suspended') ctx.resume();
       cleanupRef.current = buildSound(ctx, masterGainRef.current, soundId);
     }
-
     setActiveSound(soundId);
   }, [activeSound, volume]);
 
   const changeVolume = useCallback((v) => {
     setVolume(v);
-    // HTML5 Audio 볼륨
     if (audioElRef.current) audioElRef.current.volume = v;
-    // Web Audio API 볼륨
-    if (masterGainRef.current) {
-      masterGainRef.current.gain.setTargetAtTime(v, masterGainRef.current.context.currentTime, 0.05);
-    }
+    if (masterGainRef.current) masterGainRef.current.gain.setTargetAtTime(v, masterGainRef.current.context.currentTime, 0.05);
   }, []);
 
   useEffect(() => () => { stopAll(); ctxRef.current?.close(); }, []);
-
   return { activeSound, volume, play, changeVolume };
 }
 
 // ─────────────────────────────────────────────────────────────────
-// 토끼 캐릭터
+// 책 표지 컴포넌트
 // ─────────────────────────────────────────────────────────────────
-const CuteSquirrel = ({ mood = 'happy', className = 'w-10 h-10' }) => (
-  <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-    {/* 꼬리 */}
-    <circle cx="20" cy="70" r="8" fill="#E5E7EB" />
-    <circle cx="20" cy="70" r="5" fill="#F9FAFB" />
-
-    {/* 귀 (머리 뒤) */}
-    <ellipse cx="40" cy="22" rx="9" ry="22" fill="#F3F4F6" transform="rotate(-8 40 22)" />
-    <ellipse cx="40" cy="22" rx="5.5" ry="17" fill="#FBCFE8" transform="rotate(-8 40 22)" />
-    <ellipse cx="66" cy="20" rx="9" ry="22" fill="#F3F4F6" transform="rotate(8 66 20)" />
-    <ellipse cx="66" cy="20" rx="5.5" ry="17" fill="#FBCFE8" transform="rotate(8 66 20)" />
-
-    {/* 몸통 */}
-    <ellipse cx="54" cy="73" rx="24" ry="18" fill="#F3F4F6" />
-    {/* 배 */}
-    <ellipse cx="54" cy="77" rx="14" ry="11" fill="white" />
-
-    {/* 얼굴 */}
-    <circle cx="54" cy="50" r="22" fill="#F3F4F6" />
-
-    {/* 안경 */}
-    <circle cx="45" cy="48" r="8" fill="none" stroke="#374151" strokeWidth="2" />
-    <circle cx="63" cy="48" r="8" fill="none" stroke="#374151" strokeWidth="2" />
-    <path d="M 53 48 L 55 48" stroke="#374151" strokeWidth="2" />
-
-    {/* 눈 */}
-    {mood === 'sleeping' ? (
-      <>
-        <path d="M 41 48 Q 45 44 49 48" stroke="#374151" strokeWidth="2" fill="none" strokeLinecap="round" />
-        <path d="M 59 48 Q 63 44 67 48" stroke="#374151" strokeWidth="2" fill="none" strokeLinecap="round" />
-        <text x="76" y="28" fontSize="13" fill="#6B7280" fontWeight="bold">Z</text>
-        <text x="88" y="18" fontSize="9"  fill="#6B7280" fontWeight="bold">z</text>
-      </>
-    ) : (
-      <>
-        <circle cx="45" cy="48" r="2.5" fill="#1F2937" />
-        <circle cx="63" cy="48" r="2.5" fill="#1F2937" />
-      </>
-    )}
-
-    {/* 코 */}
-    <ellipse cx="54" cy="56" rx="3" ry="2" fill="#F472B6" />
-
-    {/* 입 */}
-    {(mood === 'happy' || mood === 'bolppang') && (
-      <path d="M 50 59 Q 54 63 58 59" stroke="#374151" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-    )}
-
-    {/* 볼빵빵 (3일 연속 달성) */}
-    {mood === 'bolppang' && (
-      <>
-        <circle cx="35" cy="57" r="12" fill="#FEF3C7" />
-        <circle cx="73" cy="57" r="12" fill="#FEF3C7" />
-        <circle cx="35" cy="57" r="6"  fill="#FCA5A5" opacity="0.85" />
-        <circle cx="73" cy="57" r="6"  fill="#FCA5A5" opacity="0.85" />
-        <path d="M 8 28 L 13 33 L 8 38 Z"   fill="#FCD34D" />
-        <path d="M 88 18 L 93 23 L 88 28 Z" fill="#FCD34D" />
-      </>
-    )}
-
-    {/* 기본 홍조 */}
-    {mood === 'happy' && (
-      <>
-        <ellipse cx="39" cy="56" rx="4.5" ry="2.5" fill="#FCA5A5" opacity="0.45" />
-        <ellipse cx="69" cy="56" rx="4.5" ry="2.5" fill="#FCA5A5" opacity="0.45" />
-      </>
-    )}
-
-    {/* 책 (들고 있음) */}
-    <path d="M 40 72 L 50 76 L 50 86 L 40 82 Z" fill="#3B82F6" />
-    <path d="M 50 76 L 60 72 L 60 82 L 50 86 Z" fill="#60A5FA" />
-    <path d="M 50 76 L 50 86" stroke="#1E3A8A" strokeWidth="1" />
-  </svg>
-);
-
-// 책 표지 컴포넌트 (이미지 오류 시 fallback)
 const BookCover = ({ thumbnail, className = "w-full h-full" }) => {
   const [err, setErr] = useState(false);
   if (thumbnail && !err) {
@@ -297,10 +154,44 @@ const BookCover = ({ thumbnail, className = "w-full h-full" }) => {
   );
 };
 
+// 별점 컴포넌트
+const StarRating = ({ value, onChange, size = 'md' }) => {
+  const [hover, setHover] = useState(0);
+  const cls = size === 'sm' ? 'text-lg' : 'text-2xl';
+  return (
+    <div className="flex gap-0.5">
+      {[1,2,3,4,5].map(star => (
+        <button
+          key={star}
+          type="button"
+          onClick={() => onChange && onChange(star === value ? 0 : star)}
+          onMouseEnter={() => onChange && setHover(star)}
+          onMouseLeave={() => onChange && setHover(0)}
+          className={`${cls} transition-transform ${onChange ? 'hover:scale-125 cursor-pointer' : 'cursor-default'} ${star <= (hover || value) ? 'text-amber-400' : 'text-gray-200'}`}
+        >★</button>
+      ))}
+    </div>
+  );
+};
+
+// Google 아이콘
+const GoogleIcon = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5">
+    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+  </svg>
+);
+
 // ─────────────────────────────────────────────────────────────────
 // 메인 앱
 // ─────────────────────────────────────────────────────────────────
 export default function App() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const dataLoadedRef = useRef(false);
+
   const [books, setBooks] = useState([]);
   const [records, setRecords] = useState({});
   const [viewMode, setViewMode] = useState('library');
@@ -318,6 +209,8 @@ export default function App() {
 
   const [selectedBook, setSelectedBook] = useState(null);
   const [readPagesInput, setReadPagesInput] = useState(0);
+  const [ratingInput, setRatingInput] = useState(0);
+  const [commentInput, setCommentInput] = useState('');
 
   const [timerTime, setTimerTime] = useState(30 * 60);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
@@ -325,22 +218,56 @@ export default function App() {
 
   const asmr = useAsmr();
 
+  // ── Firebase Auth ────────────────────────────────────────────────
   useEffect(() => {
-    const b = localStorage.getItem('acornBooks');
-    if (b) setBooks(JSON.parse(b));
-    const r = localStorage.getItem('acornRecords');
-    if (r) setRecords(JSON.parse(r));
-    const s = localStorage.getItem('acornSettings');
-    if (s) setIsDark(JSON.parse(s).isDark);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setUser(firebaseUser);
+        try {
+          const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (snap.exists()) {
+            const data = snap.data();
+            setBooks(data.books || []);
+            setRecords(data.records || {});
+            setIsDark(data.settings?.isDark ?? false);
+          }
+        } catch (e) { console.error(e); }
+        dataLoadedRef.current = true;
+      } else {
+        setUser(null);
+        setBooks([]);
+        setRecords({});
+        dataLoadedRef.current = false;
+      }
+      setAuthLoading(false);
+    });
+    return unsubscribe;
   }, []);
 
-  useEffect(() => localStorage.setItem('acornBooks', JSON.stringify(books)), [books]);
-  useEffect(() => localStorage.setItem('acornRecords', JSON.stringify(records)), [records]);
+  const saveDoc = useCallback((updates) => {
+    if (!dataLoadedRef.current || !user) return;
+    setDoc(doc(db, 'users', user.uid), updates, { merge: true }).catch(console.error);
+  }, [user]);
+
+  useEffect(() => { saveDoc({ books }); }, [books]);
+  useEffect(() => { saveDoc({ records }); }, [records]);
   useEffect(() => {
-    localStorage.setItem('acornSettings', JSON.stringify({ isDark }));
+    saveDoc({ settings: { isDark } });
     document.body.style.backgroundColor = isDark ? '#111827' : '#FFFBEB';
   }, [isDark]);
 
+  const handleGoogleLogin = async () => {
+    try { await signInWithPopup(auth, googleProvider); }
+    catch (e) { showToast('로그인 실패: ' + e.message); }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setBooks([]); setRecords({});
+    dataLoadedRef.current = false;
+  };
+
+  // ── 타이머 ───────────────────────────────────────────────────────
   useEffect(() => {
     if (isTimerRunning && timerTime > 0) {
       timerRef.current = setInterval(() => setTimerTime(p => p - 1), 1000);
@@ -358,46 +285,48 @@ export default function App() {
   const fmtDate = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
-  // ── Tavily API 책 검색 ───────────────────────────────────────────
-  // CORS 지원, 한국어/영어 모두 지원
-  // 책 표지: Yes24 CDN 패턴, 교보 ISBN 패턴 순서로 시도
+  // ── Tavily 책 검색 ───────────────────────────────────────────────
   const TAVILY_KEY = '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';
 
   const parseThumbnail = (url, content) => {
-    // 1) Yes24 상품 URL → CDN 표지
     const yes24 = url.match(/yes24\.com\/Product\/Goods\/(\d+)/i);
     if (yes24) return `https://image.yes24.com/goods/${yes24[1]}/XL`;
-
-    // 2) ISBN 추출 → 교보 CDN 표지
-    const isbnMatch = content.match(/(?:ISBN|isbn)[^\d]*(\d{13})/) ||
-                      content.match(/\b(978\d{10})\b/);
+    const isbnMatch = content.match(/(?:ISBN|isbn)[^\d]*(\d{13})/) || content.match(/\b(978\d{10})\b/);
     if (isbnMatch) {
       const isbn = isbnMatch[1];
-      return `https://contents.kyobobook.co.kr/sih/dimgfserver/cover/${isbn.slice(0, 3)}/${isbn}.png`;
+      return `https://contents.kyobobook.co.kr/sih/dimgfserver/cover/${isbn.slice(0,3)}/${isbn}.png`;
     }
-
     return '';
   };
 
   const parseAuthorFromContent = (content) => {
     const patterns = [
-      /저자?\s*[:\|]\s*([^|\n,·]{2,20})/,
-      /글\s*[:\|]?\s*([^|\n,·]{2,15})/,
-      /([^|\n,·]{2,15})\s+지음/,
-      /([^|\n,·]{2,15})\s+저(?:\s|$)/,
+      /저자\s*[\/\|:：]\s*역자[^\n|]*?:\s*([^|\n,·]{2,20})/,
+      /저자\s*[:\|：]\s*([^|\n,·\/]{2,20})/,
+      /지은이\s*[:\|：]?\s*([^|\n,·\/]{2,20})/,
+      /글\s*[:\|：]?\s*([^|\n,·\/]{2,15})/,
+      /([^|\n,·\/]{2,15})\s+지음/,
+      /([^|\n,·\/]{2,15})\s+저(?:\s|$|[,|·])/,
+      /저\s*:\s*([^|\n,·\/]{2,20})/,
+      /author\s*[:\|]\s*([^|\n,·]{2,30})/i,
       /by\s+([^|\n,·]{2,30})/i,
     ];
     for (const p of patterns) {
       const m = content.match(p);
-      if (m) return m[1].replace(/[<>[\]()]/g, '').trim();
+      if (m) {
+        const author = m[1].replace(/[<>[\]()\s]+/g, ' ').trim();
+        if (author.length >= 2 && author.length <= 20) return author;
+      }
     }
-    return '작자 미상';
+    return '';
   };
 
   const parsePageFromContent = (content) => {
     const patterns = [
-      /쪽수[^\d]*(\d{2,4})\s*쪽/,
+      /페이지수\s*[:\|：]\s*(\d{2,4})/,
+      /쪽수\s*[:\|：]?\s*(\d{2,4})\s*쪽/,
       /(\d{2,4})\s*페이지/,
+      /총\s*(\d{2,4})\s*쪽/,
       /(\d{2,4})\s*쪽/,
       /(\d{2,4})\s*p(?:ages?)?(?:\s|$)/i,
     ];
@@ -408,7 +337,7 @@ export default function App() {
         if (n >= 50 && n <= 5000) return n;
       }
     }
-    return 300;
+    return null;
   };
 
   const cleanTitle = (raw) =>
@@ -421,31 +350,20 @@ export default function App() {
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
-    setIsSearching(true);
-    setHasSearched(true);
-    setSearchResults([]);
-
+    setIsSearching(true); setHasSearched(true); setSearchResults([]);
     try {
       const isKorean = /[가-힣]/.test(searchQuery);
-
       const body = {
         api_key: TAVILY_KEY,
-        query: isKorean
-          ? `${searchQuery} 책 도서 정보`
-          : `${searchQuery} book`,
+        query: isKorean ? `${searchQuery} 책 저자 페이지수` : `${searchQuery} book author pages`,
         search_depth: 'basic',
         include_images: true,
         max_results: 10,
       };
+      if (isKorean) body.include_domains = ['yes24.com', 'aladin.co.kr', 'kyobobook.co.kr'];
 
-      if (isKorean) {
-        body.include_domains = ['yes24.com', 'aladin.co.kr', 'kyobobook.co.kr'];
-      }
-
-      // 15초 타임아웃
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 15000);
-
       const res = await fetch('/api/tavily/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -453,45 +371,33 @@ export default function App() {
         signal: controller.signal,
       });
       clearTimeout(timer);
-
       if (!res.ok) throw new Error(`Tavily 오류 ${res.status}`);
 
       const data = await res.json();
       const results = data.results ?? [];
       const images = data.images ?? [];
+      if (results.length === 0) { setSearchResults([]); return; }
 
-      if (results.length === 0) {
-        setSearchResults([]);
-        return;
-      }
-
-      // 결과 파싱 — 동일 책의 중복 URL 제거
       const seen = new Set();
       const parsed = results
-        .filter(r => {
-          if (seen.has(r.url)) return false;
-          seen.add(r.url);
-          return true;
-        })
+        .filter(r => { if (seen.has(r.url)) return false; seen.add(r.url); return true; })
         .map((r, idx) => {
           const thumbnail =
             parseThumbnail(r.url, r.content) ||
-            // 교보 검색결과 페이지인 경우 images 풀에서 Yes24 커버 이미지 우선 선택
             images.find(img => /image\.yes24\.com\/goods\/\d+/.test(img)) ||
-            images[idx] ||
-            '';
-
+            images[idx] || '';
+          const author = parseAuthorFromContent(r.content) || parseAuthorFromContent(r.title) || '미상';
+          const totalPage = parsePageFromContent(r.content);
           return {
             apiId: r.url,
             title: cleanTitle(r.title),
-            author: parseAuthorFromContent(r.content),
+            author,
             thumbnail,
-            totalPage: parsePageFromContent(r.content),
+            totalPage,
             description: r.content.slice(0, 200),
           };
         })
         .filter(b => b.title.length > 0);
-
       setSearchResults(parsed);
     } catch (err) {
       console.error('Tavily Search Error:', err);
@@ -503,10 +409,8 @@ export default function App() {
   };
 
   const addBook = (bookData) => {
-    if (books.find(b => b.apiId === bookData.apiId)) {
-      showToast('이미 서재에 있는 책이에요!'); return;
-    }
-    setBooks([{ ...bookData, id: Date.now().toString(), readPages: 0, status: 'reading', startDate: fmtDate(new Date()), endDate: null, rating: 0 }, ...books]);
+    if (books.find(b => b.apiId === bookData.apiId)) { showToast('이미 서재에 있는 책이에요!'); return; }
+    setBooks([{ ...bookData, id: Date.now().toString(), readPages: 0, status: 'reading', startDate: fmtDate(new Date()), endDate: null, rating: 0, comment: '' }, ...books]);
     setIsSearchOpen(false); setSearchQuery(''); setSearchResults([]);
     showToast(`📚 '${bookData.title}'을(를) 서재에 꽂았어요!`);
   };
@@ -514,12 +418,12 @@ export default function App() {
   const updateProgress = (e) => {
     e.preventDefault();
     if (!selectedBook) return;
-    let newPages = Math.max(0, Math.min(Number(readPagesInput), selectedBook.totalPage));
-    const pagesReadToday = newPages - selectedBook.readPages;
+    let newPages = Math.max(0, Math.min(Number(readPagesInput), selectedBook.totalPage || 9999));
+    const pagesReadToday = Math.max(0, newPages - selectedBook.readPages);
     setBooks(books.map(b => {
       if (b.id !== selectedBook.id) return b;
-      const done = newPages >= b.totalPage;
-      return { ...b, readPages: newPages, status: done ? 'completed' : 'reading', endDate: done && !b.endDate ? fmtDate(new Date()) : b.endDate };
+      const done = newPages >= (b.totalPage || 9999);
+      return { ...b, readPages: newPages, status: done ? 'completed' : 'reading', endDate: done && !b.endDate ? fmtDate(new Date()) : b.endDate, rating: ratingInput, comment: commentInput };
     }));
     if (pagesReadToday > 0) {
       const today = fmtDate(new Date());
@@ -556,6 +460,39 @@ export default function App() {
   const tCard = isDark ? 'bg-gray-700 border-gray-600 hover:border-gray-500' : 'bg-orange-50/30 border-orange-100/50 hover:shadow-md hover:border-orange-200';
   const tInput = isDark ? 'bg-gray-700/50 border-gray-600/50 text-white' : 'bg-white border-amber-200 text-gray-800 focus:border-amber-400';
 
+  // ── 로딩 화면 ────────────────────────────────────────────────────
+  if (authLoading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-gray-900' : 'bg-[#FFFBEB]'}`}>
+        <div className="flex flex-col items-center gap-4">
+          <img src="/rabbit.png" alt="" className="w-20 h-20 animate-bounce" />
+          <div className="w-8 h-8 border-4 border-orange-400 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  // ── 로그인 화면 ──────────────────────────────────────────────────
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FFFBEB] p-4">
+        <div className="bg-white rounded-[2.5rem] shadow-2xl p-10 flex flex-col items-center gap-6 w-full max-w-sm border-4 border-white/60">
+          <img src="/rabbit.png" alt="다빈토끼" className="w-28 h-28 object-contain" />
+          <div className="text-center">
+            <h1 className="text-2xl font-black text-orange-600">다빈토끼의 도서관</h1>
+            <p className="text-sm text-gray-500 mt-2">나만의 독서 기록을 시작해보세요! 🥕</p>
+          </div>
+          <button
+            onClick={handleGoogleLogin}
+            className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-white border-2 border-gray-200 rounded-2xl font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95"
+          >
+            <GoogleIcon /> Google로 로그인
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── 내 서재 뷰 ────────────────────────────────────────────────────
   const renderLibrary = () => {
     const reading = books.filter(b => b.status === 'reading');
@@ -579,22 +516,23 @@ export default function App() {
               <p className={tTextSub}>지금 읽고 있는 책이 없어요.<br/>새로운 책을 찾아볼까요?</p>
             </div>
           ) : reading.map(book => {
-            const pct = Math.round((book.readPages / book.totalPage) * 100);
+            const pct = book.totalPage ? Math.round((book.readPages / book.totalPage) * 100) : 0;
             return (
-              <div key={book.id} onClick={() => { setSelectedBook(book); setReadPagesInput(book.readPages); setIsBookModalOpen(true); }} className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${tCard} flex gap-4`}>
+              <div key={book.id} onClick={() => { setSelectedBook(book); setReadPagesInput(book.readPages); setRatingInput(book.rating || 0); setCommentInput(book.comment || ''); setIsBookModalOpen(true); }} className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${tCard} flex gap-4`}>
                 <div className="w-16 h-24 rounded-lg shadow-sm overflow-hidden flex-shrink-0 border border-gray-100">
                   <BookCover thumbnail={book.thumbnail} />
                 </div>
                 <div className="flex-1 flex flex-col justify-center">
                   <h4 className={`font-bold text-base mb-1 ${tTextMain}`} style={{overflow:'hidden',display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:1}}>{book.title}</h4>
-                  <p className={`text-xs mb-3 ${tTextSub}`} style={{overflow:'hidden',display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:1}}>{book.author}</p>
-                  <div className="flex items-center gap-2">
+                  <p className={`text-xs mb-1 ${tTextSub}`} style={{overflow:'hidden',display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:1}}>{book.author}</p>
+                  {book.rating > 0 && <StarRating value={book.rating} size="sm" />}
+                  <div className="flex items-center gap-2 mt-2">
                     <div className={`flex-1 h-2.5 rounded-full overflow-hidden ${isDark ? 'bg-gray-600' : 'bg-amber-100'}`}>
                       <div className="h-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-500" style={{width:`${pct}%`}} />
                     </div>
                     <span className={`text-[11px] font-black w-8 text-right ${isDark ? 'text-orange-400' : 'text-orange-600'}`}>{pct}%</span>
                   </div>
-                  <div className={`text-[10px] mt-1 text-right font-medium ${tTextSub}`}>{book.readPages}/{book.totalPage}p</div>
+                  <div className={`text-[10px] mt-1 text-right font-medium ${tTextSub}`}>{book.readPages}/{book.totalPage ?? '?'}p</div>
                 </div>
               </div>
             );
@@ -608,7 +546,7 @@ export default function App() {
             </h3>
             <div className="grid grid-cols-3 gap-3">
               {done.map(book => (
-                <div key={book.id} onClick={() => { setSelectedBook(book); setReadPagesInput(book.readPages); setIsBookModalOpen(true); }} className="cursor-pointer group">
+                <div key={book.id} onClick={() => { setSelectedBook(book); setReadPagesInput(book.readPages); setRatingInput(book.rating || 0); setCommentInput(book.comment || ''); setIsBookModalOpen(true); }} className="cursor-pointer group">
                   <div className="aspect-[2/3] rounded-xl shadow-sm overflow-hidden border border-gray-200 mb-2 transition-transform group-hover:-translate-y-1 group-hover:shadow-md relative">
                     <BookCover thumbnail={book.thumbnail} />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -616,6 +554,7 @@ export default function App() {
                     </div>
                   </div>
                   <p className={`text-xs font-bold text-center ${tTextMain}`} style={{overflow:'hidden',display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:1}}>{book.title}</p>
+                  {book.rating > 0 && <div className="flex justify-center mt-0.5"><StarRating value={book.rating} size="sm" /></div>}
                 </div>
               ))}
             </div>
@@ -625,7 +564,7 @@ export default function App() {
     );
   };
 
-  // ── 도토리 창고 뷰 ────────────────────────────────────────────────
+  // ── 당근 창고 뷰 ─────────────────────────────────────────────────
   const renderAcorn = () => {
     const today = new Date(); today.setHours(0,0,0,0);
     const days = Array.from({length:35},(_,i)=>{
@@ -684,39 +623,49 @@ export default function App() {
       {/* ── 메인 카드 ─────────────────────────────────────────────── */}
       <div className={`w-full max-w-[460px] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col h-[850px] max-h-[90vh] border-4 border-white/60 ${tBg}`}>
 
-        <div className="p-6 pb-0">
+        <div className="p-4 sm:p-6 pb-0">
           {/* 헤더 */}
           <div className="flex justify-between items-center mb-6">
-            <div className="flex items-center gap-3">
-              <img src="/rabbit.png" alt="다빈토끼" className="w-12 h-12 object-contain" />
+            <div className="flex items-center gap-2 sm:gap-3">
+              <img src="/rabbit.png" alt="다빈토끼" className="w-11 h-11 sm:w-12 sm:h-12 object-contain" />
               <div>
-                <h1 className="text-[20px] font-black tracking-tight text-orange-600">다빈토끼의 도서관</h1>
+                <h1 className="text-[17px] sm:text-[20px] font-black tracking-tight text-orange-600">다빈토끼의 도서관</h1>
                 <div className="flex gap-1 mt-0.5">
                   {streak > 0 && <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">🥕 {streak}일째 독서중!</span>}
                   {isBolppang && <span className="text-[10px] font-extrabold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full flex items-center gap-1"><Flame className="w-3 h-3 fill-current"/> 볼빵빵!</span>}
                 </div>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1.5">
               {/* 타이머 */}
-              <button onClick={toggleTimer} className={`flex items-center gap-1.5 p-2.5 rounded-2xl font-bold text-sm shadow-sm transition-all ${isTimerRunning ? 'bg-orange-500 text-white' : (isDark ? 'text-gray-400 bg-gray-700 hover:bg-gray-600' : 'text-orange-600 bg-orange-50 hover:bg-orange-100')}`}>
-                {isTimerRunning ? <Pause className="w-5 h-5 fill-current"/> : <Timer className="w-5 h-5"/>}
-                <span className="hidden sm:inline">{fmt(timerTime)}</span>
+              <button onClick={toggleTimer} className={`flex items-center gap-1 px-2.5 py-2 rounded-2xl font-bold text-xs shadow-sm transition-all ${isTimerRunning ? 'bg-orange-500 text-white' : (isDark ? 'text-gray-400 bg-gray-700 hover:bg-gray-600' : 'text-orange-600 bg-orange-50 hover:bg-orange-100')}`}>
+                {isTimerRunning ? <Pause className="w-4 h-4 fill-current"/> : <Timer className="w-4 h-4"/>}
+                <span className="text-[11px] font-black tabular-nums">{fmt(timerTime)}</span>
               </button>
-              {/* ASMR 버튼 */}
-              <button onClick={() => setIsAsmrOpen(p=>!p)} className={`p-2.5 rounded-2xl transition-all ${asmr.activeSound ? 'bg-emerald-500 text-white' : (isDark ? 'text-gray-400 bg-gray-700 hover:bg-gray-600' : 'text-gray-500 bg-gray-100 hover:bg-gray-200')}`} title="집중 사운드 ASMR">
-                <Headphones className="w-5 h-5" />
+              {/* ASMR */}
+              <button onClick={() => setIsAsmrOpen(p=>!p)} className={`p-2 rounded-2xl transition-all ${asmr.activeSound ? 'bg-emerald-500 text-white' : (isDark ? 'text-gray-400 bg-gray-700 hover:bg-gray-600' : 'text-gray-500 bg-gray-100 hover:bg-gray-200')}`}>
+                <Headphones className="w-4 h-4" />
               </button>
               {/* 사용법 */}
-              <button onClick={() => setIsHelpOpen(true)} className={`p-2.5 rounded-2xl font-black text-sm transition-all ${isDark ? 'text-gray-400 bg-gray-700 hover:bg-gray-600' : 'text-gray-500 bg-gray-100 hover:bg-gray-200'}`}>?</button>
+              <button onClick={() => setIsHelpOpen(true)} className={`p-2 rounded-2xl font-black text-sm transition-all ${isDark ? 'text-gray-400 bg-gray-700 hover:bg-gray-600' : 'text-gray-500 bg-gray-100 hover:bg-gray-200'}`}>?</button>
               {/* 다크모드 */}
-              <button onClick={() => setIsDark(p=>!p)} className={`p-2.5 rounded-2xl transition-all ${isDark ? 'text-yellow-400 bg-gray-700' : 'text-gray-400 bg-gray-100 hover:bg-gray-200'}`}>
-                {isDark ? <Moon className="w-5 h-5 fill-current"/> : <Sun className="w-5 h-5 fill-current"/>}
+              <button onClick={() => setIsDark(p=>!p)} className={`p-2 rounded-2xl transition-all ${isDark ? 'text-yellow-400 bg-gray-700' : 'text-gray-400 bg-gray-100 hover:bg-gray-200'}`}>
+                {isDark ? <Moon className="w-4 h-4 fill-current"/> : <Sun className="w-4 h-4 fill-current"/>}
+              </button>
+              {/* 유저 아바타 + 로그아웃 */}
+              <button onClick={handleLogout} className="relative group flex-shrink-0" title="로그아웃">
+                {user.photoURL
+                  ? <img src={user.photoURL} alt="프로필" className="w-8 h-8 rounded-full border-2 border-orange-300 group-hover:border-red-400 transition-all" />
+                  : <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border-2 border-orange-300 group-hover:border-red-400 transition-all ${isDark ? 'bg-gray-700 text-white' : 'bg-orange-100 text-orange-600'}`}>{user.displayName?.[0] ?? '?'}</div>
+                }
+                <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <LogOut className="w-3 h-3 text-white" />
+                </div>
               </button>
             </div>
           </div>
 
-          {/* ASMR 패널 (헤더 아래 슬라이드) */}
+          {/* ASMR 패널 */}
           {isAsmrOpen && (
             <div className={`mb-4 rounded-2xl border-2 p-4 ${isDark ? 'bg-gray-700 border-gray-600' : 'bg-emerald-50 border-emerald-200'}`}>
               <div className="flex items-center justify-between mb-3">
@@ -724,26 +673,15 @@ export default function App() {
                   <Headphones className="w-4 h-4" /> 집중 사운드
                   {asmr.activeSound && <span className="text-[10px] font-bold bg-emerald-500 text-white px-2 py-0.5 rounded-full animate-pulse ml-1">재생중</span>}
                 </span>
-                {/* 볼륨 */}
                 <div className="flex items-center gap-2">
                   {asmr.volume === 0 ? <VolumeX className="w-4 h-4 text-gray-400"/> : <Volume2 className="w-4 h-4 text-emerald-500"/>}
-                  <input
-                    type="range" min="0" max="1" step="0.05"
-                    value={asmr.volume}
-                    onChange={e => asmr.changeVolume(Number(e.target.value))}
-                    className="w-20 h-1.5 accent-emerald-500 cursor-pointer"
-                  />
+                  <input type="range" min="0" max="1" step="0.05" value={asmr.volume} onChange={e => asmr.changeVolume(Number(e.target.value))} className="w-20 h-1.5 accent-emerald-500 cursor-pointer"/>
                 </div>
               </div>
               <div className="grid grid-cols-5 gap-2">
                 {ASMR_SOUNDS.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => asmr.play(s.id)}
-                    className={`flex flex-col items-center gap-1 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${asmr.activeSound === s.id ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200' : (isDark ? 'bg-gray-600 text-gray-300 hover:bg-gray-500' : 'bg-white text-gray-600 hover:bg-emerald-100 border border-emerald-100')}`}
-                  >
-                    <span className="text-xl">{s.emoji}</span>
-                    {s.label}
+                  <button key={s.id} onClick={() => asmr.play(s.id)} className={`flex flex-col items-center gap-1 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${asmr.activeSound === s.id ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200' : (isDark ? 'bg-gray-600 text-gray-300 hover:bg-gray-500' : 'bg-white text-gray-600 hover:bg-emerald-100 border border-emerald-100')}`}>
+                    <span className="text-xl">{s.emoji}</span>{s.label}
                   </button>
                 ))}
               </div>
@@ -752,7 +690,7 @@ export default function App() {
 
           {/* 탭 */}
           <div className={`flex rounded-2xl p-1.5 mb-6 shadow-inner ${isDark ? 'bg-gray-900 border border-gray-700' : 'bg-amber-100/50'}`}>
-            {[['library','내 서재','Library'],['records','창고 기록','History']].map(([mode, label]) => (
+            {[['library','내 서재'],['records','창고 기록']].map(([mode, label]) => (
               <button key={mode} onClick={() => setViewMode(mode)} className={`flex-1 py-2.5 text-sm font-extrabold rounded-xl transition-all duration-300 flex justify-center items-center gap-2 ${viewMode === mode ? (isDark ? 'bg-gray-700 text-white shadow-md' : 'bg-white text-orange-600 shadow-md') : (isDark ? 'text-gray-500' : 'text-amber-700/50')}`}>
                 {mode === 'library' ? <><Library className="w-4 h-4"/> {label}</> : <><History className="w-4 h-4"/> {label}</>}
               </button>
@@ -776,14 +714,15 @@ export default function App() {
               </h3>
               <button onClick={() => setIsHelpOpen(false)} className={`p-2 rounded-full shadow-sm ${isDark ? 'bg-gray-700 text-gray-400' : 'bg-white text-gray-400'} hover:text-rose-500`}><X className="w-5 h-5"/></button>
             </div>
-            <div className={`p-6 space-y-5 overflow-y-auto max-h-[70vh] ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
+            <div className={`p-6 space-y-4 overflow-y-auto max-h-[70vh] ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
               {[
                 { emoji: '📚', title: '책 추가하기', desc: '내 서재 탭에서 [새로운 책 추가하기]를 눌러 제목이나 저자로 검색하세요. 원하는 책을 찾으면 [서재에 추가]를 탭하면 됩니다.' },
-                { emoji: '📖', title: '독서 진도 기록', desc: '서재에서 책 카드를 탭하면 지금까지 읽은 페이지를 입력할 수 있어요. 슬라이더로 조절하거나 숫자를 직접 입력하세요. 마지막 페이지까지 읽으면 자동으로 완독 처리됩니다!' },
-                { emoji: '🥕', title: '당근 창고 (독서 기록)', desc: '창고 기록 탭에서 최근 35일간의 독서 기록을 한눈에 볼 수 있어요. 많이 읽을수록 칸이 진해져요. 매일 읽으면 연속 독서 뱃지가 쌓입니다!' },
-                { emoji: '⏱️', title: '집중 타이머', desc: '상단 타이머 버튼을 누르면 30분 집중 독서 타이머가 시작돼요. 타이머가 끝나면 알림이 울려요. 다시 누르면 일시정지할 수 있어요.' },
-                { emoji: '🎵', title: 'ASMR 집중 사운드', desc: '헤드폰 버튼을 눌러 집중에 도움되는 소리를 틀어보세요. 빗소리, 장작불, 파도, 숲속, 산바람 중 선택할 수 있고 볼륨도 조절 가능해요.' },
-                { emoji: '🌙', title: '다크모드', desc: '달/해 버튼으로 다크모드와 라이트모드를 전환할 수 있어요. 밤에 독서할 때 눈이 편해요.' },
+                { emoji: '📖', title: '독서 진도 기록', desc: '서재에서 책 카드를 탭하면 읽은 페이지를 입력할 수 있어요. 별점과 코멘트도 남길 수 있어요. 마지막 페이지까지 읽으면 자동으로 완독 처리됩니다!' },
+                { emoji: '⭐', title: '별점 & 코멘트', desc: '책 카드를 탭하면 1~5점 별점과 한 줄 코멘트를 남길 수 있어요. 나만의 독서 기록을 쌓아보세요.' },
+                { emoji: '🥕', title: '당근 창고 (독서 기록)', desc: '창고 기록 탭에서 최근 35일간의 독서 기록을 볼 수 있어요. 많이 읽을수록 칸이 진해져요. 매일 읽으면 연속 독서 뱃지가 쌓입니다!' },
+                { emoji: '⏱️', title: '집중 타이머', desc: '상단 타이머 버튼을 누르면 30분 집중 독서 타이머가 시작돼요.' },
+                { emoji: '🎵', title: 'ASMR 집중 사운드', desc: '헤드폰 버튼으로 빗소리, 장작불, 파도, 숲속, 산바람 중 선택할 수 있어요.' },
+                { emoji: '☁️', title: '클라우드 동기화', desc: 'Google 로그인으로 모든 기기에서 독서 기록이 자동 동기화돼요!' },
               ].map(({ emoji, title, desc }) => (
                 <div key={title} className={`flex gap-4 p-4 rounded-2xl ${isDark ? 'bg-gray-700' : 'bg-orange-50'}`}>
                   <span className="text-2xl flex-shrink-0 mt-0.5">{emoji}</span>
@@ -816,7 +755,7 @@ export default function App() {
                   {isSearching ? '검색중...' : '검색'}
                 </button>
               </form>
-              <p className={`text-[11px] mt-2 ml-1 ${tTextSub}`}>Open Library 데이터베이스로 검색합니다 (한국어·영어 모두 지원)</p>
+              <p className={`text-[11px] mt-2 ml-1 ${tTextSub}`}>한국어·영어 모두 지원 (yes24, 알라딘, 교보)</p>
             </div>
             <div className={`flex-1 overflow-y-auto p-4 ${isDark ? 'bg-gray-900/50' : 'bg-gray-50'}`} style={{scrollbarWidth:'thin'}}>
               {isSearching ? (
@@ -828,7 +767,7 @@ export default function App() {
                 <div className="h-full flex flex-col items-center justify-center opacity-60">
                   <BookOpen className="w-12 h-12 text-gray-300 mb-3"/>
                   <p className="text-sm font-bold text-gray-400 text-center">
-                    {hasSearched ? <>검색 결과가 없어요.<br/>다른 검색어로 찾아보세요!</> : <>도서관에서 책을 찾아올게요!<br/>제목이나 저자 이름을 입력해 보세요.</>}
+                    {hasSearched ? <>검색 결과가 없어요.<br/>다른 검색어로 찾아보세요!</> : <>제목이나 저자 이름을 입력해 보세요.</>}
                   </p>
                 </div>
               ) : (
@@ -841,7 +780,7 @@ export default function App() {
                       <div className="flex-1 flex flex-col py-1">
                         <h4 className={`font-bold text-sm leading-snug mb-1 ${tTextMain}`} style={{overflow:'hidden',display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:2}}>{book.title}</h4>
                         <p className={`text-xs ${tTextSub}`}>{book.author}</p>
-                        <p className={`text-[10px] mt-1 ${tTextSub}`}>총 {book.totalPage}쪽</p>
+                        <p className={`text-[10px] mt-1 ${tTextSub}`}>{book.totalPage ? `총 ${book.totalPage}쪽` : '쪽수 미상'}</p>
                         <button onClick={() => addBook(book)} className="mt-auto self-start text-xs font-bold bg-orange-100 text-orange-600 px-4 py-1.5 rounded-lg hover:bg-orange-200 transition-colors">서재에 추가</button>
                       </div>
                     </div>
@@ -860,7 +799,7 @@ export default function App() {
             <div className="flex justify-end mb-2">
               <button onClick={() => setIsBookModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="w-6 h-6"/></button>
             </div>
-            <div className="flex flex-col items-center text-center mb-6">
+            <div className="flex flex-col items-center text-center mb-5">
               <div className="w-24 h-36 rounded-xl shadow-lg overflow-hidden mb-4 border border-gray-200">
                 <BookCover thumbnail={selectedBook.thumbnail} className="w-full h-full"/>
               </div>
@@ -872,18 +811,40 @@ export default function App() {
                 </span>
               )}
             </div>
-            <form onSubmit={updateProgress} className="space-y-4">
+            <form onSubmit={updateProgress} className="space-y-3">
+              {/* 페이지 */}
               <div className={`p-4 rounded-2xl border-2 ${isDark ? 'border-gray-700' : 'bg-amber-50/50 border-amber-100'}`}>
                 <label className={`block text-xs font-bold mb-2 ${tTextSub}`}>어디까지 읽으셨나요?</label>
                 <div className="flex items-center gap-2">
                   <input type="number" value={readPagesInput} onChange={e => setReadPagesInput(e.target.value)} className={`flex-1 text-center font-black text-xl px-4 py-3 rounded-xl border-2 outline-none ${tInput}`}/>
-                  <span className={`font-bold ${tTextSub}`}>/ {selectedBook.totalPage}p</span>
+                  <span className={`font-bold ${tTextSub}`}>/ {selectedBook.totalPage ?? '?'}p</span>
                 </div>
-                <input type="range" min="0" max={selectedBook.totalPage} value={readPagesInput} onChange={e => setReadPagesInput(e.target.value)} className="w-full mt-4 accent-orange-500 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                {selectedBook.totalPage && (
+                  <input type="range" min="0" max={selectedBook.totalPage} value={readPagesInput} onChange={e => setReadPagesInput(e.target.value)} className="w-full mt-3 accent-orange-500 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                )}
               </div>
-              <div className="flex gap-2 pt-2">
+
+              {/* 별점 */}
+              <div className={`p-4 rounded-2xl border-2 ${isDark ? 'border-gray-700' : 'bg-amber-50/50 border-amber-100'}`}>
+                <label className={`block text-xs font-bold mb-2 ${tTextSub}`}>별점</label>
+                <StarRating value={ratingInput} onChange={setRatingInput} />
+              </div>
+
+              {/* 코멘트 */}
+              <div className={`p-4 rounded-2xl border-2 ${isDark ? 'border-gray-700' : 'bg-amber-50/50 border-amber-100'}`}>
+                <label className={`block text-xs font-bold mb-2 ${tTextSub}`}>한 줄 코멘트</label>
+                <textarea
+                  value={commentInput}
+                  onChange={e => setCommentInput(e.target.value)}
+                  placeholder="이 책에 대한 느낌을 남겨보세요..."
+                  rows={2}
+                  className={`w-full text-sm px-3 py-2 rounded-xl border-2 outline-none resize-none ${tInput}`}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-1">
                 <button type="button" onClick={() => deleteBook(selectedBook.id)} className={`flex-1 py-3.5 rounded-2xl text-sm font-bold border-2 transition-colors ${isDark ? 'border-gray-600 text-gray-400 hover:bg-gray-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>삭제</button>
-                <button type="submit" className="flex-[2] bg-orange-500 hover:bg-orange-600 text-white py-3.5 rounded-2xl text-sm font-bold shadow-md transition-all active:scale-95">진도 저장하기</button>
+                <button type="submit" className="flex-[2] bg-orange-500 hover:bg-orange-600 text-white py-3.5 rounded-2xl text-sm font-bold shadow-md transition-all active:scale-95">저장하기</button>
               </div>
             </form>
           </div>
