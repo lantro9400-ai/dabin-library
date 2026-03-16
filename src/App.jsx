@@ -5,7 +5,7 @@ import {
   Library, Flame, History, BookMarked, Headphones, Volume2, VolumeX, LogOut
 } from 'lucide-react';
 import { auth, db, googleProvider } from './firebase';
-import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 // ─────────────────────────────────────────────────────────────────
@@ -220,6 +220,9 @@ export default function App() {
 
   // ── Firebase Auth ────────────────────────────────────────────────
   useEffect(() => {
+    // 모바일 리다이렉트 로그인 결과 처리
+    getRedirectResult(auth).catch(console.error);
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
@@ -257,8 +260,14 @@ export default function App() {
   }, [isDark]);
 
   const handleGoogleLogin = async () => {
-    try { await signInWithPopup(auth, googleProvider); }
-    catch (e) { showToast('로그인 실패: ' + e.message); }
+    try {
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        await signInWithRedirect(auth, googleProvider);
+      } else {
+        await signInWithPopup(auth, googleProvider);
+      }
+    } catch (e) { showToast('로그인 실패: ' + e.message); }
   };
 
   const handleLogout = async () => {
