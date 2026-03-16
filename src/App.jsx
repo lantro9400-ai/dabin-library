@@ -267,7 +267,14 @@ export default function App() {
       } else {
         await signInWithPopup(auth, googleProvider);
       }
-    } catch (e) { showToast('로그인 실패: ' + e.message); }
+    } catch (e) {
+      console.error('Login error:', e.code, e.message);
+      if (e.code === 'auth/unauthorized-domain') {
+        alert('Firebase 승인 도메인 설정이 필요해요.\nAuthentication → Settings → 승인된 도메인에\ndabin-library.vercel.app 을 추가해주세요.');
+      } else {
+        alert('로그인 오류: ' + e.code);
+      }
+    }
   };
 
   const handleLogout = async () => {
