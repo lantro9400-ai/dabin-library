@@ -207,56 +207,80 @@ function useAsmr() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// 다람쥐 캐릭터
+// 토끼 캐릭터
 // ─────────────────────────────────────────────────────────────────
 const CuteSquirrel = ({ mood = 'happy', className = 'w-10 h-10' }) => (
   <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M 30 80 C 10 80, 5 40, 20 30 C 35 20, 50 40, 40 60" fill="#B45309" />
-    <path d="M 35 75 C 15 75, 10 45, 25 35 C 35 25, 45 45, 35 55" fill="#D97706" />
-    <ellipse cx="60" cy="70" rx="25" ry="20" fill="#D97706" />
-    <ellipse cx="55" cy="75" rx="15" ry="10" fill="#FDE68A" />
-    <path d="M 45 40 L 50 25 L 60 35 Z" fill="#B45309" />
-    <path d="M 75 40 L 70 25 L 60 35 Z" fill="#B45309" />
-    <ellipse cx="60" cy="50" rx="22" ry="18" fill="#D97706" />
-    <circle cx="50" cy="48" r="8" fill="none" stroke="#451A03" strokeWidth="2" />
-    <circle cx="70" cy="48" r="8" fill="none" stroke="#451A03" strokeWidth="2" />
-    <path d="M 58 48 L 62 48" stroke="#451A03" strokeWidth="2" />
+    {/* 꼬리 */}
+    <circle cx="20" cy="70" r="8" fill="#E5E7EB" />
+    <circle cx="20" cy="70" r="5" fill="#F9FAFB" />
+
+    {/* 귀 (머리 뒤) */}
+    <ellipse cx="40" cy="22" rx="9" ry="22" fill="#F3F4F6" transform="rotate(-8 40 22)" />
+    <ellipse cx="40" cy="22" rx="5.5" ry="17" fill="#FBCFE8" transform="rotate(-8 40 22)" />
+    <ellipse cx="66" cy="20" rx="9" ry="22" fill="#F3F4F6" transform="rotate(8 66 20)" />
+    <ellipse cx="66" cy="20" rx="5.5" ry="17" fill="#FBCFE8" transform="rotate(8 66 20)" />
+
+    {/* 몸통 */}
+    <ellipse cx="54" cy="73" rx="24" ry="18" fill="#F3F4F6" />
+    {/* 배 */}
+    <ellipse cx="54" cy="77" rx="14" ry="11" fill="white" />
+
+    {/* 얼굴 */}
+    <circle cx="54" cy="50" r="22" fill="#F3F4F6" />
+
+    {/* 안경 */}
+    <circle cx="45" cy="48" r="8" fill="none" stroke="#374151" strokeWidth="2" />
+    <circle cx="63" cy="48" r="8" fill="none" stroke="#374151" strokeWidth="2" />
+    <path d="M 53 48 L 55 48" stroke="#374151" strokeWidth="2" />
+
+    {/* 눈 */}
     {mood === 'sleeping' ? (
       <>
-        <path d="M 46 48 Q 50 45 54 48" stroke="#451A03" strokeWidth="2" fill="none" strokeLinecap="round" />
-        <path d="M 66 48 Q 70 45 74 48" stroke="#451A03" strokeWidth="2" fill="none" strokeLinecap="round" />
-        <text x="80" y="30" fontSize="14" fill="#78350F" fontWeight="bold">Z</text>
-        <text x="92" y="20" fontSize="10" fill="#78350F" fontWeight="bold">z</text>
+        <path d="M 41 48 Q 45 44 49 48" stroke="#374151" strokeWidth="2" fill="none" strokeLinecap="round" />
+        <path d="M 59 48 Q 63 44 67 48" stroke="#374151" strokeWidth="2" fill="none" strokeLinecap="round" />
+        <text x="76" y="28" fontSize="13" fill="#6B7280" fontWeight="bold">Z</text>
+        <text x="88" y="18" fontSize="9"  fill="#6B7280" fontWeight="bold">z</text>
       </>
     ) : (
       <>
-        <circle cx="50" cy="48" r="2.5" fill="#451A03" />
-        <circle cx="70" cy="48" r="2.5" fill="#451A03" />
+        <circle cx="45" cy="48" r="2.5" fill="#1F2937" />
+        <circle cx="63" cy="48" r="2.5" fill="#1F2937" />
       </>
     )}
-    <circle cx="60" cy="55" r="2" fill="#78350F" />
+
+    {/* 코 */}
+    <ellipse cx="54" cy="56" rx="3" ry="2" fill="#F472B6" />
+
+    {/* 입 */}
     {(mood === 'happy' || mood === 'bolppang') && (
-      <path d="M 55 58 Q 60 62 65 58" stroke="#451A03" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <path d="M 50 59 Q 54 63 58 59" stroke="#374151" strokeWidth="1.5" fill="none" strokeLinecap="round" />
     )}
+
+    {/* 볼빵빵 (3일 연속 달성) */}
     {mood === 'bolppang' && (
       <>
-        <circle cx="38" cy="58" r="12" fill="#FDE68A" />
-        <circle cx="82" cy="58" r="12" fill="#FDE68A" />
-        <circle cx="38" cy="58" r="5" fill="#FCA5A5" opacity="0.8" />
-        <circle cx="82" cy="58" r="5" fill="#FCA5A5" opacity="0.8" />
-        <path d="M 10 30 L 15 35 L 10 40 Z" fill="#FCD34D" />
-        <path d="M 90 20 L 95 25 L 90 30 Z" fill="#FCD34D" />
+        <circle cx="35" cy="57" r="12" fill="#FEF3C7" />
+        <circle cx="73" cy="57" r="12" fill="#FEF3C7" />
+        <circle cx="35" cy="57" r="6"  fill="#FCA5A5" opacity="0.85" />
+        <circle cx="73" cy="57" r="6"  fill="#FCA5A5" opacity="0.85" />
+        <path d="M 8 28 L 13 33 L 8 38 Z"   fill="#FCD34D" />
+        <path d="M 88 18 L 93 23 L 88 28 Z" fill="#FCD34D" />
       </>
     )}
+
+    {/* 기본 홍조 */}
     {mood === 'happy' && (
       <>
-        <ellipse cx="45" cy="55" rx="4" ry="2" fill="#FCA5A5" opacity="0.5"/>
-        <ellipse cx="75" cy="55" rx="4" ry="2" fill="#FCA5A5" opacity="0.5"/>
+        <ellipse cx="39" cy="56" rx="4.5" ry="2.5" fill="#FCA5A5" opacity="0.45" />
+        <ellipse cx="69" cy="56" rx="4.5" ry="2.5" fill="#FCA5A5" opacity="0.45" />
       </>
     )}
-    <path d="M 45 70 L 55 75 L 55 85 L 45 80 Z" fill="#3B82F6" />
-    <path d="M 55 75 L 65 70 L 65 80 L 55 85 Z" fill="#60A5FA" />
-    <path d="M 55 75 L 55 85" stroke="#1E3A8A" strokeWidth="1" />
+
+    {/* 책 (들고 있음) */}
+    <path d="M 40 72 L 50 76 L 50 86 L 40 82 Z" fill="#3B82F6" />
+    <path d="M 50 76 L 60 72 L 60 82 L 50 86 Z" fill="#60A5FA" />
+    <path d="M 50 76 L 50 86" stroke="#1E3A8A" strokeWidth="1" />
   </svg>
 );
 
@@ -322,7 +346,7 @@ export default function App() {
     } else if (timerTime === 0 && isTimerRunning) {
       clearInterval(timerRef.current);
       setIsTimerRunning(false);
-      showToast('⏰ 집중 독서 완료! 다람쥐가 도토리를 물어왔어요 🌰');
+      showToast('⏰ 집중 독서 완료! 토끼가 당근을 가져왔어요 🥕');
       setTimerTime(30 * 60);
     }
     return () => clearInterval(timerRef.current);
@@ -500,7 +524,7 @@ export default function App() {
       const today = fmtDate(new Date());
       const cur = records[today] || { pages: 0, time: 0 };
       setRecords({ ...records, [today]: { ...cur, pages: cur.pages + pagesReadToday } });
-      showToast(`🌰 도토리를 찾았어요! (+${pagesReadToday}p)`);
+      showToast(`🥕 당근을 찾았어요! (+${pagesReadToday}p)`);
     }
     setIsBookModalOpen(false);
   };
@@ -611,13 +635,13 @@ export default function App() {
       if (pages>0&&pages<=10) bg='bg-amber-300';
       else if (pages>10&&pages<=30) bg='bg-orange-400';
       else if (pages>30) bg='bg-orange-600';
-      return <div key={i} title={`${dStr}: ${pages}p 읽음`} className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg ${bg} hover:scale-125 transition-transform cursor-pointer flex items-center justify-center`}>{pages>0&&<span className="text-[10px]">🌰</span>}</div>;
+      return <div key={i} title={`${dStr}: ${pages}p 읽음`} className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg ${bg} hover:scale-125 transition-transform cursor-pointer flex items-center justify-center`}>{pages>0&&<span className="text-[10px]">🥕</span>}</div>;
     });
     return (
       <div>
         <div className={`mt-2 p-6 rounded-[2rem] border-2 ${tCard} flex flex-col items-center mb-6`}>
           <div className="flex items-center gap-2 mb-6 text-base font-extrabold w-full text-orange-600">
-            <History className="w-5 h-5" /> 나의 도토리 창고 (최근 35일)
+            <History className="w-5 h-5" /> 나의 당근 창고 (최근 35일)
           </div>
           <div className="grid grid-cols-7 gap-2 sm:gap-3">{days}</div>
           <div className="w-full flex justify-end items-center gap-2 mt-4 text-[11px] font-bold text-gray-400">
@@ -630,10 +654,10 @@ export default function App() {
         </div>
         <div className="p-6 rounded-[2rem] bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg relative overflow-hidden">
           <div className="absolute -right-4 -bottom-4 opacity-20"><CuteSquirrel mood="bolppang" className="w-32 h-32"/></div>
-          <h3 className="text-xl font-black mb-6 relative z-10">다람쥐의 성적표 📜</h3>
+          <h3 className="text-xl font-black mb-6 relative z-10">토끼의 성적표 📜</h3>
           <div className="grid grid-cols-2 gap-4 relative z-10">
             <div className="bg-white/20 rounded-2xl p-4 border border-white/30">
-              <p className="text-amber-100 text-xs font-bold mb-1">지금까지 모은 도토리</p>
+              <p className="text-amber-100 text-xs font-bold mb-1">지금까지 모은 당근</p>
               <p className="text-3xl font-black">{Object.values(records).reduce((s,r)=>s+r.pages,0)}<span className="text-sm text-amber-100 ml-1">개(p)</span></p>
             </div>
             <div className="bg-white/20 rounded-2xl p-4 border border-white/30">
@@ -652,7 +676,7 @@ export default function App() {
       {/* 토스트 */}
       {toast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900/90 text-white px-6 py-3.5 rounded-full shadow-2xl font-bold text-sm flex items-center gap-2 border-2 border-white/20 backdrop-blur-md">
-          🌰 {toast}
+          🥕 {toast}
         </div>
       )}
 
@@ -665,9 +689,9 @@ export default function App() {
             <div className="flex items-center gap-3">
               <CuteSquirrel mood={isBolppang ? 'bolppang' : (books.length === 0 ? 'sleeping' : 'happy')} className="w-12 h-12" />
               <div>
-                <h1 className="text-[20px] font-black tracking-tight text-orange-600">다빈다람쥐의 도서관</h1>
+                <h1 className="text-[20px] font-black tracking-tight text-orange-600">다빈토끼의 도서관</h1>
                 <div className="flex gap-1 mt-0.5">
-                  {streak > 0 && <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">🌰 {streak}일째 독서중!</span>}
+                  {streak > 0 && <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">🥕 {streak}일째 독서중!</span>}
                   {isBolppang && <span className="text-[10px] font-extrabold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full flex items-center gap-1"><Flame className="w-3 h-3 fill-current"/> 볼빵빵!</span>}
                 </div>
               </div>
