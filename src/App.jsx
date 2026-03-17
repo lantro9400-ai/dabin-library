@@ -148,8 +148,8 @@ const BookCover = ({ thumbnail, className = "w-full h-full" }) => {
     return <img src={thumbnail} alt="cover" className={`${className} object-cover`} onError={() => setErr(true)} />;
   }
   return (
-    <div className={`${className} bg-amber-100 flex items-center justify-center`}>
-      <BookOpen className="w-8 h-8 text-amber-300" />
+    <div className={`${className} bg-pink-100 flex items-center justify-center`}>
+      <BookOpen className="w-8 h-8 text-pink-300" />
     </div>
   );
 };
@@ -167,7 +167,7 @@ const StarRating = ({ value, onChange, size = 'md' }) => {
           onClick={() => onChange && onChange(star === value ? 0 : star)}
           onMouseEnter={() => onChange && setHover(star)}
           onMouseLeave={() => onChange && setHover(0)}
-          className={`${cls} transition-transform ${onChange ? 'hover:scale-125 cursor-pointer' : 'cursor-default'} ${star <= (hover || value) ? 'text-amber-400' : 'text-gray-200'}`}
+          className={`${cls} transition-transform ${onChange ? 'hover:scale-125 cursor-pointer' : 'cursor-default'} ${star <= (hover || value) ? 'text-pink-400' : 'text-gray-200'}`}
         >★</button>
       ))}
     </div>
@@ -224,12 +224,28 @@ export default function App() {
 
   const asmr = useAsmr();
 
+  // authLoading 절대 안전망: 8초 후 강제 종료
+  useEffect(() => {
+    if (!authLoading) return;
+    const t = setTimeout(() => {
+      console.warn('authLoading timeout — force clearing');
+      setAuthLoading(false);
+    }, 8000);
+    return () => clearTimeout(t);
+  }, [authLoading]);
+
   // ── Firebase Auth ────────────────────────────────────────────────
   const loadUserData = useCallback(async (firebaseUser) => {
     setUser(firebaseUser);
     try {
-      const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
-      if (snap.exists()) {
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 5000)
+      );
+      const snap = await Promise.race([
+        getDoc(doc(db, 'users', firebaseUser.uid)),
+        timeout
+      ]);
+      if (snap?.exists?.()) {
         const data = snap.data();
         setBooks(data.books || []);
         setRecords(data.records || {});
@@ -243,8 +259,8 @@ export default function App() {
   // 페이지 로드 시 기존 세션 복원
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      // 로그인 팝업 진행 중 null 이벤트 무시
-      if (!firebaseUser && loginInProgressRef.current) return;
+      // 로그인 진행 중이면 완전히 무시 (handleEmailAuth/handleGoogleLogin에서 직접 처리)
+      if (loginInProgressRef.current) return;
 
       if (firebaseUser && !dataLoadedRef.current) {
         await loadUserData(firebaseUser);
@@ -313,15 +329,17 @@ export default function App() {
     loginInProgressRef.current = true;
     setAuthLoading(true);
     try {
+      let firebaseUser;
       if (authMode === 'signup') {
         const result = await createUserWithEmailAndPassword(auth, emailInput, passwordInput);
         if (nameInput.trim()) await updateProfile(result.user, { displayName: nameInput.trim() });
-        await loadUserData({ ...result.user, displayName: nameInput.trim() || result.user.displayName });
+        firebaseUser = result.user;
       } else {
         const result = await signInWithEmailAndPassword(auth, emailInput, passwordInput);
-        loginInProgressRef.current = false;
-        await loadUserData(result.user);
+        firebaseUser = result.user;
       }
+      loginInProgressRef.current = false;
+      await loadUserData(firebaseUser);
     } catch (e) {
       loginInProgressRef.current = false;
       setAuthLoading(false);
@@ -525,19 +543,19 @@ export default function App() {
   const streak = calculateStreak();
   const isBolppang = streak >= 3;
 
-  const tBg = isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-amber-100';
+  const tBg = isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-pink-100';
   const tTextMain = isDark ? 'text-gray-100' : 'text-gray-800';
-  const tTextSub = isDark ? 'text-gray-400' : 'text-amber-700/60';
-  const tCard = isDark ? 'bg-gray-700 border-gray-600 hover:border-gray-500' : 'bg-orange-50/30 border-orange-100/50 hover:shadow-md hover:border-orange-200';
-  const tInput = isDark ? 'bg-gray-700/50 border-gray-600/50 text-white' : 'bg-white border-amber-200 text-gray-800 focus:border-amber-400';
+  const tTextSub = isDark ? 'text-gray-400' : 'text-pink-700/60';
+  const tCard = isDark ? 'bg-gray-700 border-gray-600 hover:border-gray-500' : 'bg-pink-50/30 border-pink-100/50 hover:shadow-md hover:border-pink-200';
+  const tInput = isDark ? 'bg-gray-700/50 border-gray-600/50 text-white' : 'bg-white border-pink-200 text-gray-800 focus:border-pink-400';
 
   // ── 로딩 화면 ────────────────────────────────────────────────────
   if (authLoading) {
     return (
-      <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-gray-900' : 'bg-[#FFFBEB]'}`}>
+      <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-gray-900' : 'bg-[#FFF0F7]'}`}>
         <div className="flex flex-col items-center gap-4">
           <img src="/rabbit.png" alt="" className="w-20 h-20 animate-bounce" />
-          <div className="w-8 h-8 border-4 border-orange-400 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-4 border-pink-400 border-t-transparent rounded-full animate-spin" />
         </div>
       </div>
     );
@@ -546,19 +564,19 @@ export default function App() {
   // ── 로그인 화면 ──────────────────────────────────────────────────
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FFFBEB] p-4">
+      <div className="min-h-screen flex items-center justify-center bg-[#FFF0F7] p-4">
         <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 flex flex-col items-center gap-5 w-full max-w-sm border-4 border-white/60">
           <img src="/rabbit.png" alt="다빈토끼" className="w-24 h-24 object-contain" />
           <div className="text-center">
-            <h1 className="text-2xl font-black text-orange-600">다빈토끼의 도서관</h1>
+            <h1 className="text-2xl font-black text-pink-500">다빈토끼의 도서관</h1>
             <p className="text-sm text-gray-500 mt-1">나만의 독서 기록을 시작해보세요! 🥕</p>
           </div>
 
           {/* 탭 */}
-          <div className="flex w-full bg-amber-50 rounded-2xl p-1">
+          <div className="flex w-full bg-pink-50 rounded-2xl p-1">
             {['login','signup'].map(mode => (
               <button key={mode} onClick={() => { setAuthMode(mode); setAuthError(''); }}
-                className={`flex-1 py-2 text-sm font-extrabold rounded-xl transition-all ${authMode === mode ? 'bg-white text-orange-600 shadow' : 'text-amber-700/50'}`}>
+                className={`flex-1 py-2 text-sm font-extrabold rounded-xl transition-all ${authMode === mode ? 'bg-white text-pink-500 shadow' : 'text-pink-700/50'}`}>
                 {mode === 'login' ? '로그인' : '회원가입'}
               </button>
             ))}
@@ -570,22 +588,22 @@ export default function App() {
               <input
                 type="text" placeholder="이름 (선택)" value={nameInput}
                 onChange={e => setNameInput(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl border-2 border-amber-200 text-sm font-medium outline-none focus:border-orange-400"
+                className="w-full px-4 py-3 rounded-2xl border-2 border-pink-200 text-sm font-medium outline-none focus:border-pink-400"
               />
             )}
             <input
               type="email" placeholder="이메일" value={emailInput} required
               onChange={e => setEmailInput(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl border-2 border-amber-200 text-sm font-medium outline-none focus:border-orange-400"
+              className="w-full px-4 py-3 rounded-2xl border-2 border-pink-200 text-sm font-medium outline-none focus:border-pink-400"
             />
             <input
               type="password" placeholder="비밀번호 (6자 이상)" value={passwordInput} required
               onChange={e => setPasswordInput(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl border-2 border-amber-200 text-sm font-medium outline-none focus:border-orange-400"
+              className="w-full px-4 py-3 rounded-2xl border-2 border-pink-200 text-sm font-medium outline-none focus:border-pink-400"
             />
             {authError && <p className="text-red-500 text-xs font-bold text-center">{authError}</p>}
             <button type="submit"
-              className="w-full py-3.5 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-black text-sm transition-all active:scale-95 shadow-md">
+              className="w-full py-3.5 bg-pink-400 hover:bg-pink-500 text-white rounded-2xl font-black text-sm transition-all active:scale-95 shadow-md">
               {authMode === 'login' ? '로그인' : '가입하기'}
             </button>
           </form>
@@ -615,18 +633,18 @@ export default function App() {
       <div>
         <button
           onClick={() => { setIsSearchOpen(true); setHasSearched(false); setSearchResults([]); setSearchQuery(''); }}
-          className={`w-full py-4 mb-6 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 font-bold transition-all hover:scale-[1.02] active:scale-95 ${isDark ? 'border-gray-600 text-gray-400 hover:border-orange-400 hover:text-orange-400' : 'border-amber-300 text-amber-600 hover:border-orange-400 hover:text-orange-500 hover:bg-orange-50'}`}
+          className={`w-full py-4 mb-6 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 font-bold transition-all hover:scale-[1.02] active:scale-95 ${isDark ? 'border-gray-600 text-gray-400 hover:border-pink-400 hover:text-pink-400' : 'border-pink-300 text-pink-500 hover:border-pink-400 hover:text-pink-500 hover:bg-pink-50'}`}
         >
           <Plus className="w-5 h-5" /> 새로운 책 추가하기
         </button>
 
         <h3 className={`font-black text-lg mb-4 flex items-center gap-2 ${tTextMain}`}>
-          <BookOpen className="w-5 h-5 text-orange-500" /> 읽고 있는 책 ({reading.length})
+          <BookOpen className="w-5 h-5 text-pink-500" /> 읽고 있는 책 ({reading.length})
         </h3>
         <div className="space-y-4 mb-8">
           {reading.length === 0 ? (
             <div className="text-center py-10 opacity-70">
-              <BookMarked className="w-12 h-12 mx-auto mb-3 text-amber-300" />
+              <BookMarked className="w-12 h-12 mx-auto mb-3 text-pink-300" />
               <p className={tTextSub}>지금 읽고 있는 책이 없어요.<br/>새로운 책을 찾아볼까요?</p>
             </div>
           ) : reading.map(book => {
@@ -641,10 +659,10 @@ export default function App() {
                   <p className={`text-xs mb-1 ${tTextSub}`} style={{overflow:'hidden',display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:1}}>{book.author}</p>
                   {book.rating > 0 && <StarRating value={book.rating} size="sm" />}
                   <div className="flex items-center gap-2 mt-2">
-                    <div className={`flex-1 h-2.5 rounded-full overflow-hidden ${isDark ? 'bg-gray-600' : 'bg-amber-100'}`}>
-                      <div className="h-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-500" style={{width:`${pct}%`}} />
+                    <div className={`flex-1 h-2.5 rounded-full overflow-hidden ${isDark ? 'bg-gray-600' : 'bg-pink-100'}`}>
+                      <div className="h-full bg-gradient-to-r from-pink-300 to-rose-400 transition-all duration-500" style={{width:`${pct}%`}} />
                     </div>
-                    <span className={`text-[11px] font-black w-8 text-right ${isDark ? 'text-orange-400' : 'text-orange-600'}`}>{pct}%</span>
+                    <span className={`text-[11px] font-black w-8 text-right ${isDark ? 'text-pink-400' : 'text-pink-500'}`}>{pct}%</span>
                   </div>
                   <div className={`text-[10px] mt-1 text-right font-medium ${tTextSub}`}>{book.readPages}/{book.totalPage ?? '?'}p</div>
                 </div>
@@ -656,7 +674,7 @@ export default function App() {
         {done.length > 0 && (
           <>
             <h3 className={`font-black text-lg mb-4 flex items-center gap-2 ${tTextMain}`}>
-              <Award className="w-5 h-5 text-amber-500" /> 다 읽은 책 ({done.length})
+              <Award className="w-5 h-5 text-pink-400" /> 다 읽은 책 ({done.length})
             </h3>
             <div className="grid grid-cols-3 gap-3">
               {done.map(book => (
@@ -685,38 +703,38 @@ export default function App() {
       const d = new Date(today); d.setDate(d.getDate()-(34-i));
       const dStr = fmtDate(d);
       const pages = records[dStr]?.pages || 0;
-      let bg = isDark ? 'bg-gray-700' : 'bg-amber-100/50';
-      if (pages>0&&pages<=10) bg='bg-amber-300';
-      else if (pages>10&&pages<=30) bg='bg-orange-400';
-      else if (pages>30) bg='bg-orange-600';
+      let bg = isDark ? 'bg-gray-700' : 'bg-pink-100/50';
+      if (pages>0&&pages<=10) bg='bg-pink-200';
+      else if (pages>10&&pages<=30) bg='bg-pink-400';
+      else if (pages>30) bg='bg-rose-500';
       return <div key={i} title={`${dStr}: ${pages}p 읽음`} className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg ${bg} hover:scale-125 transition-transform cursor-pointer flex items-center justify-center`}>{pages>0&&<span className="text-[10px]">🥕</span>}</div>;
     });
     return (
       <div>
         <div className={`mt-2 p-6 rounded-[2rem] border-2 ${tCard} flex flex-col items-center mb-6`}>
-          <div className="flex items-center gap-2 mb-6 text-base font-extrabold w-full text-orange-600">
+          <div className="flex items-center gap-2 mb-6 text-base font-extrabold w-full text-pink-500">
             <History className="w-5 h-5" /> 나의 당근 창고 (최근 35일)
           </div>
           <div className="grid grid-cols-7 gap-2 sm:gap-3">{days}</div>
           <div className="w-full flex justify-end items-center gap-2 mt-4 text-[11px] font-bold text-gray-400">
             <span>조금</span>
             <div className="flex gap-1">
-              <div className="w-3 h-3 rounded bg-amber-300"/><div className="w-3 h-3 rounded bg-orange-400"/><div className="w-3 h-3 rounded bg-orange-600"/>
+              <div className="w-3 h-3 rounded bg-pink-200"/><div className="w-3 h-3 rounded bg-pink-400"/><div className="w-3 h-3 rounded bg-rose-500"/>
             </div>
             <span>많이</span>
           </div>
         </div>
-        <div className="p-6 rounded-[2rem] bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg relative overflow-hidden">
+        <div className="p-6 rounded-[2rem] bg-gradient-to-br from-pink-400 to-rose-500 text-white shadow-lg relative overflow-hidden">
           <div className="absolute -right-4 -bottom-4 opacity-20"><img src="/rabbit.png" alt="" className="w-32 h-32 object-contain"/></div>
           <h3 className="text-xl font-black mb-6 relative z-10">토끼의 성적표 📜</h3>
           <div className="grid grid-cols-2 gap-4 relative z-10">
             <div className="bg-white/20 rounded-2xl p-4 border border-white/30">
-              <p className="text-amber-100 text-xs font-bold mb-1">지금까지 모은 당근</p>
-              <p className="text-3xl font-black">{Object.values(records).reduce((s,r)=>s+r.pages,0)}<span className="text-sm text-amber-100 ml-1">개(p)</span></p>
+              <p className="text-pink-100 text-xs font-bold mb-1">지금까지 모은 당근</p>
+              <p className="text-3xl font-black">{Object.values(records).reduce((s,r)=>s+r.pages,0)}<span className="text-sm text-pink-100 ml-1">개(p)</span></p>
             </div>
             <div className="bg-white/20 rounded-2xl p-4 border border-white/30">
-              <p className="text-amber-100 text-xs font-bold mb-1">완독한 책</p>
-              <p className="text-3xl font-black">{books.filter(b=>b.status==='completed').length}<span className="text-sm text-amber-100 ml-1">권</span></p>
+              <p className="text-pink-100 text-xs font-bold mb-1">완독한 책</p>
+              <p className="text-3xl font-black">{books.filter(b=>b.status==='completed').length}<span className="text-sm text-pink-100 ml-1">권</span></p>
             </div>
           </div>
         </div>
@@ -725,7 +743,7 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen font-sans flex justify-center py-6 px-3 sm:py-10 sm:px-4 transition-colors ${isDark ? 'bg-gray-900' : 'bg-[#FFFBEB]'}`}>
+    <div className={`min-h-screen font-sans flex justify-center py-6 px-3 sm:py-10 sm:px-4 transition-colors ${isDark ? 'bg-gray-900' : 'bg-[#FFF0F7]'}`}>
 
       {/* 토스트 */}
       {toast && (
@@ -743,16 +761,16 @@ export default function App() {
             <div className="flex items-center gap-2 sm:gap-3">
               <img src="/rabbit.png" alt="다빈토끼" className="w-11 h-11 sm:w-12 sm:h-12 object-contain" />
               <div>
-                <h1 className="text-[17px] sm:text-[20px] font-black tracking-tight text-orange-600">다빈토끼의 도서관</h1>
+                <h1 className="text-[17px] sm:text-[20px] font-black tracking-tight text-pink-500">다빈토끼의 도서관</h1>
                 <div className="flex gap-1 mt-0.5">
-                  {streak > 0 && <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">🥕 {streak}일째 독서중!</span>}
-                  {isBolppang && <span className="text-[10px] font-extrabold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full flex items-center gap-1"><Flame className="w-3 h-3 fill-current"/> 볼빵빵!</span>}
+                  {streak > 0 && <span className="text-[10px] font-extrabold text-pink-700 bg-pink-100 px-2 py-0.5 rounded-full flex items-center gap-1">🥕 {streak}일째 독서중!</span>}
+                  {isBolppang && <span className="text-[10px] font-extrabold text-pink-600 bg-pink-100 px-2 py-0.5 rounded-full flex items-center gap-1"><Flame className="w-3 h-3 fill-current"/> 볼빵빵!</span>}
                 </div>
               </div>
             </div>
             <div className="flex gap-1.5">
               {/* 타이머 */}
-              <button onClick={toggleTimer} className={`flex items-center gap-1 px-2.5 py-2 rounded-2xl font-bold text-xs shadow-sm transition-all ${isTimerRunning ? 'bg-orange-500 text-white' : (isDark ? 'text-gray-400 bg-gray-700 hover:bg-gray-600' : 'text-orange-600 bg-orange-50 hover:bg-orange-100')}`}>
+              <button onClick={toggleTimer} className={`flex items-center gap-1 px-2.5 py-2 rounded-2xl font-bold text-xs shadow-sm transition-all ${isTimerRunning ? 'bg-pink-500 text-white' : (isDark ? 'text-gray-400 bg-gray-700 hover:bg-gray-600' : 'text-pink-500 bg-pink-50 hover:bg-pink-100')}`}>
                 {isTimerRunning ? <Pause className="w-4 h-4 fill-current"/> : <Timer className="w-4 h-4"/>}
                 <span className="text-[11px] font-black tabular-nums">{fmt(timerTime)}</span>
               </button>
@@ -769,8 +787,8 @@ export default function App() {
               {/* 유저 아바타 + 로그아웃 */}
               <button onClick={handleLogout} className="relative group flex-shrink-0" title="로그아웃">
                 {user.photoURL
-                  ? <img src={user.photoURL} alt="프로필" className="w-8 h-8 rounded-full border-2 border-orange-300 group-hover:border-red-400 transition-all" />
-                  : <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border-2 border-orange-300 group-hover:border-red-400 transition-all ${isDark ? 'bg-gray-700 text-white' : 'bg-orange-100 text-orange-600'}`}>{user.displayName?.[0] ?? '?'}</div>
+                  ? <img src={user.photoURL} alt="프로필" className="w-8 h-8 rounded-full border-2 border-pink-300 group-hover:border-red-400 transition-all" />
+                  : <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border-2 border-pink-300 group-hover:border-red-400 transition-all ${isDark ? 'bg-gray-700 text-white' : 'bg-pink-100 text-pink-500'}`}>{user.displayName?.[0] ?? '?'}</div>
                 }
                 <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
                   <LogOut className="w-3 h-3 text-white" />
@@ -803,9 +821,9 @@ export default function App() {
           )}
 
           {/* 탭 */}
-          <div className={`flex rounded-2xl p-1.5 mb-6 shadow-inner ${isDark ? 'bg-gray-900 border border-gray-700' : 'bg-amber-100/50'}`}>
+          <div className={`flex rounded-2xl p-1.5 mb-6 shadow-inner ${isDark ? 'bg-gray-900 border border-gray-700' : 'bg-pink-100/50'}`}>
             {[['library','내 서재'],['records','창고 기록']].map(([mode, label]) => (
-              <button key={mode} onClick={() => setViewMode(mode)} className={`flex-1 py-2.5 text-sm font-extrabold rounded-xl transition-all duration-300 flex justify-center items-center gap-2 ${viewMode === mode ? (isDark ? 'bg-gray-700 text-white shadow-md' : 'bg-white text-orange-600 shadow-md') : (isDark ? 'text-gray-500' : 'text-amber-700/50')}`}>
+              <button key={mode} onClick={() => setViewMode(mode)} className={`flex-1 py-2.5 text-sm font-extrabold rounded-xl transition-all duration-300 flex justify-center items-center gap-2 ${viewMode === mode ? (isDark ? 'bg-gray-700 text-white shadow-md' : 'bg-white text-pink-500 shadow-md') : (isDark ? 'text-gray-500' : 'text-pink-700/50')}`}>
                 {mode === 'library' ? <><Library className="w-4 h-4"/> {label}</> : <><History className="w-4 h-4"/> {label}</>}
               </button>
             ))}
@@ -813,7 +831,7 @@ export default function App() {
         </div>
 
         {/* 콘텐츠 */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 pt-0" style={{scrollbarWidth:'thin',scrollbarColor:isDark?'#4b5563 transparent':'#fcd34d transparent'}}>
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 pt-0" style={{scrollbarWidth:'thin',scrollbarColor:isDark?'#4b5563 transparent':'#fbcfe8 transparent'}}>
           {viewMode === 'library' ? renderLibrary() : renderAcorn()}
         </div>
       </div>
@@ -822,7 +840,7 @@ export default function App() {
       {isHelpOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsHelpOpen(false)}>
           <div className={`rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border-4 border-white/50 ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white'}`} onClick={e => e.stopPropagation()}>
-            <div className={`p-6 border-b flex justify-between items-center ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-orange-50 border-orange-100'}`}>
+            <div className={`p-6 border-b flex justify-between items-center ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-pink-50 border-pink-100'}`}>
               <h3 className={`text-xl font-black flex items-center gap-2 ${tTextMain}`}>
                 <img src="/rabbit.png" alt="" className="w-8 h-8 object-contain" /> 사용법 안내
               </h3>
@@ -838,7 +856,7 @@ export default function App() {
                 { emoji: '🎵', title: 'ASMR 집중 사운드', desc: '헤드폰 버튼으로 빗소리, 장작불, 파도, 숲속, 산바람 중 선택할 수 있어요.' },
                 { emoji: '☁️', title: '클라우드 동기화', desc: 'Google 로그인으로 모든 기기에서 독서 기록이 자동 동기화돼요!' },
               ].map(({ emoji, title, desc }) => (
-                <div key={title} className={`flex gap-4 p-4 rounded-2xl ${isDark ? 'bg-gray-700' : 'bg-orange-50'}`}>
+                <div key={title} className={`flex gap-4 p-4 rounded-2xl ${isDark ? 'bg-gray-700' : 'bg-pink-50'}`}>
                   <span className="text-2xl flex-shrink-0 mt-0.5">{emoji}</span>
                   <div>
                     <p className={`font-black text-sm mb-1 ${tTextMain}`}>{title}</p>
@@ -855,17 +873,17 @@ export default function App() {
       {isSearchOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsSearchOpen(false)}>
           <div className={`rounded-[2rem] shadow-2xl w-full max-w-md h-[80vh] flex flex-col overflow-hidden border-4 border-white/50 ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white'}`} onClick={e => e.stopPropagation()}>
-            <div className={`p-6 border-b flex justify-between items-center ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-orange-50 border-orange-100'}`}>
-              <h3 className={`text-xl font-black flex items-center gap-2 ${tTextMain}`}><Search className="w-6 h-6 text-orange-500"/> 책 찾기</h3>
+            <div className={`p-6 border-b flex justify-between items-center ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-pink-50 border-pink-100'}`}>
+              <h3 className={`text-xl font-black flex items-center gap-2 ${tTextMain}`}><Search className="w-6 h-6 text-pink-500"/> 책 찾기</h3>
               <button onClick={() => setIsSearchOpen(false)} className={`p-2 rounded-full shadow-sm ${isDark ? 'bg-gray-700 text-gray-400' : 'bg-white text-gray-400'} hover:text-rose-500`}><X className="w-5 h-5"/></button>
             </div>
             <div className={`p-4 ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
               <form onSubmit={handleSearch} className="flex gap-2">
                 <div className={`flex-1 flex items-center px-4 py-3 rounded-2xl border-2 ${tInput}`}>
-                  <Search className={`w-5 h-5 mr-2 flex-shrink-0 ${isDark ? 'text-gray-400' : 'text-amber-400'}`}/>
+                  <Search className={`w-5 h-5 mr-2 flex-shrink-0 ${isDark ? 'text-gray-400' : 'text-pink-400'}`}/>
                   <input type="text" autoFocus value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="책 제목이나 저자를 검색하세요" className="flex-1 outline-none bg-transparent text-sm font-medium"/>
                 </div>
-                <button type="submit" disabled={isSearching} className="bg-orange-500 text-white px-5 rounded-2xl font-bold hover:bg-orange-600 transition-colors disabled:opacity-50 whitespace-nowrap">
+                <button type="submit" disabled={isSearching} className="bg-pink-400 text-white px-5 rounded-2xl font-bold hover:bg-pink-500 transition-colors disabled:opacity-50 whitespace-nowrap">
                   {isSearching ? '검색중...' : '검색'}
                 </button>
               </form>
@@ -874,7 +892,7 @@ export default function App() {
             <div className={`flex-1 overflow-y-auto p-4 ${isDark ? 'bg-gray-900/50' : 'bg-gray-50'}`} style={{scrollbarWidth:'thin'}}>
               {isSearching ? (
                 <div className="h-full flex flex-col items-center justify-center opacity-60">
-                  <div className="w-8 h-8 border-4 border-orange-400 border-t-transparent rounded-full animate-spin mb-3"/>
+                  <div className="w-8 h-8 border-4 border-pink-400 border-t-transparent rounded-full animate-spin mb-3"/>
                   <p className="text-sm font-bold text-gray-400">도서관에서 책을 찾고 있어요...</p>
                 </div>
               ) : searchResults.length === 0 ? (
@@ -895,7 +913,7 @@ export default function App() {
                         <h4 className={`font-bold text-sm leading-snug mb-1 ${tTextMain}`} style={{overflow:'hidden',display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:2}}>{book.title}</h4>
                         <p className={`text-xs ${tTextSub}`}>{book.author}</p>
                         <p className={`text-[10px] mt-1 ${tTextSub}`}>{book.totalPage ? `총 ${book.totalPage}쪽` : '쪽수 미상'}</p>
-                        <button onClick={() => addBook(book)} className="mt-auto self-start text-xs font-bold bg-orange-100 text-orange-600 px-4 py-1.5 rounded-lg hover:bg-orange-200 transition-colors">서재에 추가</button>
+                        <button onClick={() => addBook(book)} className="mt-auto self-start text-xs font-bold bg-pink-100 text-pink-600 px-4 py-1.5 rounded-lg hover:bg-pink-200 transition-colors">서재에 추가</button>
                       </div>
                     </div>
                   ))}
@@ -927,25 +945,25 @@ export default function App() {
             </div>
             <form onSubmit={updateProgress} className="space-y-3">
               {/* 페이지 */}
-              <div className={`p-4 rounded-2xl border-2 ${isDark ? 'border-gray-700' : 'bg-amber-50/50 border-amber-100'}`}>
+              <div className={`p-4 rounded-2xl border-2 ${isDark ? 'border-gray-700' : 'bg-pink-50/50 border-pink-100'}`}>
                 <label className={`block text-xs font-bold mb-2 ${tTextSub}`}>어디까지 읽으셨나요?</label>
                 <div className="flex items-center gap-2">
                   <input type="number" value={readPagesInput} onChange={e => setReadPagesInput(e.target.value)} className={`flex-1 text-center font-black text-xl px-4 py-3 rounded-xl border-2 outline-none ${tInput}`}/>
                   <span className={`font-bold ${tTextSub}`}>/ {selectedBook.totalPage ?? '?'}p</span>
                 </div>
                 {selectedBook.totalPage && (
-                  <input type="range" min="0" max={selectedBook.totalPage} value={readPagesInput} onChange={e => setReadPagesInput(e.target.value)} className="w-full mt-3 accent-orange-500 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                  <input type="range" min="0" max={selectedBook.totalPage} value={readPagesInput} onChange={e => setReadPagesInput(e.target.value)} className="w-full mt-3 accent-pink-400 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
                 )}
               </div>
 
               {/* 별점 */}
-              <div className={`p-4 rounded-2xl border-2 ${isDark ? 'border-gray-700' : 'bg-amber-50/50 border-amber-100'}`}>
+              <div className={`p-4 rounded-2xl border-2 ${isDark ? 'border-gray-700' : 'bg-pink-50/50 border-pink-100'}`}>
                 <label className={`block text-xs font-bold mb-2 ${tTextSub}`}>별점</label>
                 <StarRating value={ratingInput} onChange={setRatingInput} />
               </div>
 
               {/* 코멘트 */}
-              <div className={`p-4 rounded-2xl border-2 ${isDark ? 'border-gray-700' : 'bg-amber-50/50 border-amber-100'}`}>
+              <div className={`p-4 rounded-2xl border-2 ${isDark ? 'border-gray-700' : 'bg-pink-50/50 border-pink-100'}`}>
                 <label className={`block text-xs font-bold mb-2 ${tTextSub}`}>한 줄 코멘트</label>
                 <textarea
                   value={commentInput}
@@ -958,7 +976,7 @@ export default function App() {
 
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={() => deleteBook(selectedBook.id)} className={`flex-1 py-3.5 rounded-2xl text-sm font-bold border-2 transition-colors ${isDark ? 'border-gray-600 text-gray-400 hover:bg-gray-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>삭제</button>
-                <button type="submit" className="flex-[2] bg-orange-500 hover:bg-orange-600 text-white py-3.5 rounded-2xl text-sm font-bold shadow-md transition-all active:scale-95">저장하기</button>
+                <button type="submit" className="flex-[2] bg-pink-400 hover:bg-pink-500 text-white py-3.5 rounded-2xl text-sm font-bold shadow-md transition-all active:scale-95">저장하기</button>
               </div>
             </form>
           </div>
