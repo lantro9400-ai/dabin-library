@@ -237,9 +237,12 @@ export default function App() {
       ]);
       if (snap?.exists?.()) {
         const data = snap.data();
+        console.log('[load] books:', data.books?.length ?? 0, 'records:', Object.keys(data.records || {}).length);
         setBooks(data.books || []);
         setRecords(data.records || {});
         setIsDark(data.settings?.isDark ?? false);
+      } else {
+        console.log('[load] no doc for uid:', firebaseUser.uid);
       }
     } catch (e) { console.error('Firestore load error:', e); }
     dataLoadedRef.current = true;
@@ -269,16 +272,22 @@ export default function App() {
   }, [loadUserData]);
 
   const saveDoc = useCallback((updates) => {
-    if (!dataLoadedRef.current || !user) return;
-    setDoc(doc(db, 'users', user.uid), updates, { merge: true }).catch(console.error);
-  }, [user]);
+    if (!dataLoadedRef.current) return;
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const key = Object.keys(updates)[0];
+    const val = updates[key];
+    console.log(`[save] ${key}:`, Array.isArray(val) ? val.length + ' items' : val);
+    setDoc(doc(db, 'users', uid), updates, { merge: true })
+      .catch(e => console.error('Firestore save error:', e));
+  }, []);
 
-  useEffect(() => { saveDoc({ books }); }, [books]);
-  useEffect(() => { saveDoc({ records }); }, [records]);
+  useEffect(() => { saveDoc({ books }); }, [books, saveDoc]);
+  useEffect(() => { saveDoc({ records }); }, [records, saveDoc]);
   useEffect(() => {
     saveDoc({ settings: { isDark } });
     document.body.style.backgroundColor = isDark ? '#111827' : '#FFFBEB';
-  }, [isDark]);
+  }, [isDark, saveDoc]);
 
   const handleGoogleLogin = async () => {
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
