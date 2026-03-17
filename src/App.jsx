@@ -227,7 +227,6 @@ export default function App() {
   // ── Firebase Auth ────────────────────────────────────────────────
   const loadUserData = useCallback(async (firebaseUser) => {
     setUser(firebaseUser);
-    setAuthLoading(false); // 인증 확인 즉시 앱 표시, Firestore는 백그라운드 로드
     try {
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('timeout')), 8000)
@@ -244,6 +243,7 @@ export default function App() {
       }
     } catch (e) { console.error('Firestore load error:', e); }
     dataLoadedRef.current = true;
+    setAuthLoading(false);
   }, []);
 
   // 페이지 로드 시 기존 세션 복원
