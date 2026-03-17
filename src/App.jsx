@@ -224,22 +224,13 @@ export default function App() {
 
   const asmr = useAsmr();
 
-  // authLoading 절대 안전망: 8초 후 강제 종료
-  useEffect(() => {
-    if (!authLoading) return;
-    const t = setTimeout(() => {
-      console.warn('authLoading timeout — force clearing');
-      setAuthLoading(false);
-    }, 8000);
-    return () => clearTimeout(t);
-  }, [authLoading]);
-
   // ── Firebase Auth ────────────────────────────────────────────────
   const loadUserData = useCallback(async (firebaseUser) => {
     setUser(firebaseUser);
+    setAuthLoading(false); // 인증 확인 즉시 앱 표시, Firestore는 백그라운드 로드
     try {
       const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), 5000)
+        setTimeout(() => reject(new Error('timeout')), 8000)
       );
       const snap = await Promise.race([
         getDoc(doc(db, 'users', firebaseUser.uid)),
@@ -253,7 +244,6 @@ export default function App() {
       }
     } catch (e) { console.error('Firestore load error:', e); }
     dataLoadedRef.current = true;
-    setAuthLoading(false);
   }, []);
 
   // 페이지 로드 시 기존 세션 복원
