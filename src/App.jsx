@@ -244,7 +244,10 @@ export default function App() {
       } else {
         console.log('[load] no doc for uid:', firebaseUser.uid);
       }
-    } catch (e) { console.error('Firestore load error:', e); }
+    } catch (e) {
+      console.error('Firestore load error:', e);
+      if (e.code === 'permission-denied') showToast('❌ Firestore 권한 오류 - 규칙 확인 필요');
+    }
     dataLoadedRef.current = true;
     setAuthLoading(false);
   }, []);
@@ -275,9 +278,11 @@ export default function App() {
     if (!dataLoadedRef.current) return;
     const uid = auth.currentUser?.uid;
     if (!uid) { console.warn('[save] no uid'); return; }
-    console.log('[save]', Object.keys(updates)[0]);
     setDoc(doc(db, 'users', uid), updates, { merge: true })
-      .catch(e => console.error('Firestore save error:', e));
+      .catch(e => {
+        console.error('Firestore save error:', e);
+        showToast('❌ 저장 실패: ' + e.code);
+      });
   }, []);
 
   useEffect(() => {
