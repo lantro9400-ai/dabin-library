@@ -274,20 +274,16 @@ export default function App() {
   const saveDoc = useCallback((updates) => {
     if (!dataLoadedRef.current) return;
     const uid = auth.currentUser?.uid;
-    if (!uid) return;
-    const key = Object.keys(updates)[0];
-    const val = updates[key];
-    console.log(`[save] ${key}:`, Array.isArray(val) ? val.length + ' items' : val);
+    if (!uid) { console.warn('[save] no uid'); return; }
+    console.log('[save]', Object.keys(updates)[0]);
     setDoc(doc(db, 'users', uid), updates, { merge: true })
       .catch(e => console.error('Firestore save error:', e));
   }, []);
 
-  useEffect(() => { saveDoc({ books }); }, [books, saveDoc]);
-  useEffect(() => { saveDoc({ records }); }, [records, saveDoc]);
   useEffect(() => {
     saveDoc({ settings: { isDark } });
     document.body.style.backgroundColor = isDark ? '#111827' : '#FFFBEB';
-  }, [isDark, saveDoc]);
+  }, [isDark]);
 
   const handleGoogleLogin = async () => {
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -498,7 +494,9 @@ export default function App() {
 
   const addBook = (bookData) => {
     if (books.find(b => b.apiId === bookData.apiId)) { showToast('이미 서재에 있는 책이에요!'); return; }
-    setBooks([{ ...bookData, id: Date.now().toString(), readPages: 0, status: 'reading', startDate: fmtDate(new Date()), endDate: null, rating: 0, comment: '' }, ...books]);
+    const newBooks = [{ ...bookData, id: Date.now().toString(), readPages: 0, status: 'reading', startDate: fmtDate(new Date()), endDate: null, rating: 0, comment: '' }, ...books];
+    setBooks(newBooks);
+    saveDoc({ books: newBooks });
     setIsSearchOpen(false); setSearchQuery(''); setSearchResults([]);
     showToast(`📚 '${bookData.title}'을(를) 서재에 꽂았어요!`);
   };
@@ -508,22 +506,28 @@ export default function App() {
     if (!selectedBook) return;
     let newPages = Math.max(0, Math.min(Number(readPagesInput), selectedBook.totalPage || 9999));
     const pagesReadToday = Math.max(0, newPages - selectedBook.readPages);
-    setBooks(books.map(b => {
+    const newBooks = books.map(b => {
       if (b.id !== selectedBook.id) return b;
       const done = newPages >= (b.totalPage || 9999);
       return { ...b, readPages: newPages, status: done ? 'completed' : 'reading', endDate: done && !b.endDate ? fmtDate(new Date()) : b.endDate, rating: ratingInput, comment: commentInput };
-    }));
+    });
+    setBooks(newBooks);
+    saveDoc({ books: newBooks });
     if (pagesReadToday > 0) {
       const today = fmtDate(new Date());
       const cur = records[today] || { pages: 0, time: 0 };
-      setRecords({ ...records, [today]: { ...cur, pages: cur.pages + pagesReadToday } });
+      const newRecords = { ...records, [today]: { ...cur, pages: cur.pages + pagesReadToday } };
+      setRecords(newRecords);
+      saveDoc({ records: newRecords });
       showToast(`🥕 당근을 찾았어요! (+${pagesReadToday}p)`);
     }
     setIsBookModalOpen(false);
   };
 
   const deleteBook = (id) => {
-    setBooks(books.filter(b => b.id !== id));
+    const newBooks = books.filter(b => b.id !== id);
+    setBooks(newBooks);
+    saveDoc({ books: newBooks });
     setIsBookModalOpen(false);
     showToast('책을 서재에서 뺐어요.');
   };
